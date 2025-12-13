@@ -99,8 +99,9 @@ class HomeAssistantClient:
             if include_current_state and len(history_data) < 3:
                 logger.info(f"Only {len(history_data)} historical points found, fetching current state")
                 try:
-                    current_value = self.get_current_state(entity_id)
+                    # Get current time before API call for more accurate timestamp
                     current_time = datetime.now()
+                    current_value = self.get_current_state(entity_id)
                     
                     # Check if current state is not already in history
                     if not history_data or (current_time - history_data[-1][0]).total_seconds() > 1:
