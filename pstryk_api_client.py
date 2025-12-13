@@ -62,12 +62,13 @@ class PstrykApiClient:
             # The API may return different formats:
             # 1. {"00:00": 0.50, "01:00": 0.48, ...} - dict with hour keys
             # 2. [{"hour": 0, "price": 0.50}, ...] - list of objects
-            # 3. {"prices": [...]} - nested structure
+            # 3. {"prices": [{"hour": 0, "price": 0.50}, ...]} - nested list
+            # 4. {"prices": {"00:00": 0.50, ...}} - nested dict
             prices = []
             
             # Handle different response formats
             if isinstance(data, dict):
-                # Check if data has a 'prices' or similar key
+                # Check if data has a 'prices' key with nested data
                 if 'prices' in data:
                     price_data = data['prices']
                     if isinstance(price_data, list):
