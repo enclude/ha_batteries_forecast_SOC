@@ -107,7 +107,7 @@ def main():
                 
                 # Initialize pstryk.pl client with configuration
                 pstryk_client = PstrykApiClient(
-                    api_key=config.pstryk_api_key if config.pstryk_api_key else None,
+                    api_key=config.pstryk_api_key or None,
                     timeout=config.pstryk_timeout,
                     base_url=config.pstryk_base_url
                 )
