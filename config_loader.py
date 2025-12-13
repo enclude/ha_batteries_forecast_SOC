@@ -57,3 +57,23 @@ class Config:
     def threshold_percent(self):
         """Get SOC threshold percentage for forecast alert."""
         return self.config['forecast']['threshold_percent']
+    
+    @property
+    def solar_sensors(self):
+        """Get list of solar production forecast sensor IDs."""
+        return self.config.get('solar_sensors', [])
+    
+    @property
+    def charging_enabled(self):
+        """Check if charging optimization is enabled."""
+        return self.config.get('charging', {}).get('enabled', False)
+    
+    @property
+    def charging_hours_needed(self):
+        """Get number of hours needed for charging."""
+        return self.config.get('charging', {}).get('hours_needed', 4)
+    
+    @property
+    def openai_api_key(self):
+        """Get OpenAI API key."""
+        return self.config.get('openai', {}).get('api_key', '')

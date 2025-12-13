@@ -7,6 +7,13 @@ home_assistant:
 sensor:
   name: "sensor.batteries_stan_pojemnosci"  # Sensor entity ID to monitor
   
+# Solar Production Forecast Sensors
+solar_sensors:
+  - "sensor.energy_production_today"
+  - "sensor.energy_production_today_2"
+  - "sensor.energy_production_today_3"
+  - "sensor.energy_production_today_4"
+
 # Time Configuration
 time:
   history_minutes: 90  # Number of minutes of historical data to fetch
@@ -14,3 +21,15 @@ time:
 # Forecast Configuration
 forecast:
   threshold_percent: 5  # SOC threshold percentage for forecast alert
+
+# Charging Optimization Configuration
+charging:
+  enabled: true  # Enable charging optimization
+  hours_needed: 4  # Number of consecutive hours needed for full charge
+  
+# OpenAI Configuration (optional, for AI-powered recommendations)
+openai:
+  api_key: ""  # OpenAI API key (leave empty to disable AI recommendations)
+  
+# pstryk.pl API Configuration
+# Note: pstryk.pl API does not require authentication
