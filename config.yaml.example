@@ -1,0 +1,16 @@
+# Home Assistant Configuration
+home_assistant:
+  url: "http://localhost:8123"  # Home Assistant URL
+  token: "YOUR_LONG_LIVED_ACCESS_TOKEN"  # Long-lived access token
+
+# Sensor Configuration
+sensor:
+  name: "sensor.batteries_stan_pojemnosci"  # Sensor entity ID to monitor
+  
+# Time Configuration
+time:
+  history_minutes: 90  # Number of minutes of historical data to fetch
+  
+# Forecast Configuration
+forecast:
+  threshold_percent: 5  # SOC threshold percentage for forecast alert
