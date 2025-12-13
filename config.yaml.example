@@ -35,3 +35,4 @@ openai:
   
 # pstryk.pl API Configuration
 # Note: pstryk.pl API does not require authentication
+# API documentation: https://api.pstryk.pl/integrations/swagger/

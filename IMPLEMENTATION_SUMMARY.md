@@ -12,7 +12,9 @@ This implementation extends the existing battery SOC forecasting system with int
   - Identifies cheapest consecutive charging windows
   - Supports configurable timeout for API requests
   - Handles date-based queries for today and tomorrow
-- **API Endpoint**: `https://api.pstryk.pl/prices/{YYYY-MM-DD}`
+  - Flexible response parsing for multiple API formats
+- **API Endpoint**: `https://api.pstryk.pl/integrations/api/prices/{YYYY-MM-DD}`
+- **Documentation**: https://api.pstryk.pl/integrations/swagger/
 
 ### 2. OpenAI Integration (`openai_api_client.py`)
 - **Purpose**: Provide AI-powered charging recommendations using ChatGPT
