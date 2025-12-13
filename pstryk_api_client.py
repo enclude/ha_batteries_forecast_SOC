@@ -72,44 +72,16 @@ class PstrykApiClient:
                     price_data = data['prices']
                     if isinstance(price_data, list):
                         # Format: {"prices": [{"hour": 0, "price": 0.50}, ...]}
-                        for item in price_data:
-                            if isinstance(item, dict) and 'hour' in item and 'price' in item:
-                                hour = int(item['hour'])
-                                prices.append({
-                                    'hour': hour,
-                                    'price': float(item['price']),
-                                    'timestamp': datetime.combine(date, datetime.min.time()).replace(hour=hour)
-                                })
+                        prices = self._parse_price_list(price_data, date)
                     elif isinstance(price_data, dict):
                         # Format: {"prices": {"00:00": 0.50, ...}}
-                        for hour in range(24):
-                            hour_key = f"{hour:02d}:00"
-                            if hour_key in price_data:
-                                prices.append({
-                                    'hour': hour,
-                                    'price': float(price_data[hour_key]),
-                                    'timestamp': datetime.combine(date, datetime.min.time()).replace(hour=hour)
-                                })
+                        prices = self._parse_hour_dict(price_data, date)
                 else:
                     # Format: {"00:00": 0.50, "01:00": 0.48, ...}
-                    for hour in range(24):
-                        hour_key = f"{hour:02d}:00"
-                        if hour_key in data:
-                            prices.append({
-                                'hour': hour,
-                                'price': float(data[hour_key]),
-                                'timestamp': datetime.combine(date, datetime.min.time()).replace(hour=hour)
-                            })
+                    prices = self._parse_hour_dict(data, date)
             elif isinstance(data, list):
                 # Format: [{"hour": 0, "price": 0.50}, ...]
-                for item in data:
-                    if isinstance(item, dict) and 'hour' in item and 'price' in item:
-                        hour = int(item['hour'])
-                        prices.append({
-                            'hour': hour,
-                            'price': float(item['price']),
-                            'timestamp': datetime.combine(date, datetime.min.time()).replace(hour=hour)
-                        })
+                prices = self._parse_price_list(data, date)
             
             if not prices:
                 logger.warning(f"No price data found in response for {date_str}")
@@ -230,6 +202,48 @@ class PstrykApiClient:
             logger.info(f"  Period: {period['start_hour']:02d}:00 - {period['end_hour']:02d}:00 ({period['hours']}h at avg {period['avg_price']:.4f} PLN/kWh)")
         
         return periods
+    
+    def _parse_hour_dict(self, price_data, date):
+        """Parse price data in hour:price dictionary format.
+        
+        Args:
+            price_data: Dictionary with hour keys like {"00:00": 0.50, ...}
+            date: Date for timestamp creation
+        
+        Returns:
+            list: Parsed price entries
+        """
+        prices = []
+        for hour in range(24):
+            hour_key = f"{hour:02d}:00"
+            if hour_key in price_data:
+                prices.append({
+                    'hour': hour,
+                    'price': float(price_data[hour_key]),
+                    'timestamp': datetime.combine(date, datetime.min.time()).replace(hour=hour)
+                })
+        return prices
+    
+    def _parse_price_list(self, price_data, date):
+        """Parse price data in list of objects format.
+        
+        Args:
+            price_data: List of dicts like [{"hour": 0, "price": 0.50}, ...]
+            date: Date for timestamp creation
+        
+        Returns:
+            list: Parsed price entries
+        """
+        prices = []
+        for item in price_data:
+            if isinstance(item, dict) and 'hour' in item and 'price' in item:
+                hour = int(item['hour'])
+                prices.append({
+                    'hour': hour,
+                    'price': float(item['price']),
+                    'timestamp': datetime.combine(date, datetime.min.time()).replace(hour=hour)
+                })
+        return prices
     
     def _create_period_info(self, hours):
         """Create period information dictionary from a list of hours.
