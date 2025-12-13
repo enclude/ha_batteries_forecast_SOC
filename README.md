@@ -13,6 +13,9 @@ Aplikacja w Pythonie, która odczytuje dane o stanie naładowania baterii (SOC) 
 
 ### Optymalizacja Ładowania (NOWOŚĆ!)
 - 💰 Integracja z API pstryk.pl dla cen energii elektrycznej
+  - Wykorzystuje oficjalny endpoint integracyjny: `https://api.pstryk.pl/integrations/api/`
+  - Dokumentacja API: [https://api.pstryk.pl/integrations/swagger/](https://api.pstryk.pl/integrations/swagger/)
+  - Obsługa wielu formatów odpowiedzi API dla maksymalnej kompatybilności
 - 🌞 Analiza prognozy produkcji solarnej z czujników Home Assistant
 - 🤖 Opcjonalne rekomendacje AI z wykorzystaniem OpenAI (ChatGPT)
 - ⚡ Automatyczne wyszukiwanie najtańszych godzin do ładowania
@@ -267,6 +270,37 @@ Możesz wywołać ten skrypt z Home Assistant używając czujnika poleceń powł
 - Zwiększ wartość `history_minutes`
 - Poczekaj, aż czujnik zapisze więcej punktów danych
 - Sprawdź, czy czujnik regularnie się aktualizuje
+
+## Aktualizacje API pstryk.pl
+
+### Wersja aktualna (grudzień 2024)
+
+Aplikacja została zaktualizowana, aby korzystać z oficjalnego endpointu integracyjnego API pstryk.pl:
+
+- **Nowy endpoint**: `https://api.pstryk.pl/integrations/api/prices/{data}`
+- **Dokumentacja**: Dostępna pod adresem [https://api.pstryk.pl/integrations/swagger/](https://api.pstryk.pl/integrations/swagger/)
+- **Kompatybilność**: Klient API obsługuje teraz 4 różne formaty odpowiedzi:
+  1. Słownik z kluczami godzin: `{"00:00": 0.50, "01:00": 0.48, ...}`
+  2. Lista obiektów: `[{"hour": 0, "price": 0.50}, ...]`
+  3. Zagnieżdżona lista: `{"prices": [{"hour": 0, "price": 0.50}, ...]}`
+  4. Zagnieżdżony słownik: `{"prices": {"00:00": 0.50, ...}}`
+
+### Ulepszone funkcje
+
+- **Elastyczne parsowanie**: Automatyczne rozpoznawanie formatu odpowiedzi API
+- **Lepsza obsługa błędów**: Szczegółowe logowanie i ostrzeżenia w przypadku problemów
+- **Wsteczna kompatybilność**: Zachowana obsługa starszych formatów odpowiedzi
+- **Brak wymagań uwierzytelniania**: API pstryk.pl nie wymaga klucza API
+
+### Dla deweloperów
+
+Jeśli rozwijasz lub utrzymujesz tę aplikację, zwróć uwagę na:
+
+- Metoda `_parse_hour_dict()`: Obsługuje formaty słownikowe z kluczami godzin
+- Metoda `_parse_price_list()`: Obsługuje formaty listowe z obiektami cen
+- Główna metoda `get_electricity_prices()`: Automatycznie wykrywa i stosuje odpowiedni parser
+
+Więcej szczegółów technicznych znajdziesz w pliku `IMPLEMENTATION_SUMMARY.md`.
 
 ## Licencja
 
