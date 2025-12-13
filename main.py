@@ -2,9 +2,15 @@
 """Main script for battery SOC forecasting."""
 import sys
 import argparse
+import logging
 from config_loader import Config
 from ha_api_client import HomeAssistantClient
 from forecast import BatteryForecast
+
+# Exit codes
+EXIT_OK = 0  # Battery is stable or increasing
+EXIT_WARNING = 1  # Battery will reach threshold based on forecast
+EXIT_CRITICAL = 2  # Battery is already at or below threshold
 
 
 def main():
@@ -24,6 +30,12 @@ def main():
     )
     
     args = parser.parse_args()
+    
+    # Configure logging
+    if args.verbose:
+        logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
+    else:
+        logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
     
     try:
         # Load configuration
@@ -79,11 +91,11 @@ def main():
         
         # Return exit code based on result
         if forecast_result['current_soc'] <= config.threshold_percent:
-            sys.exit(2)  # Critical - already below threshold
+            sys.exit(EXIT_CRITICAL)
         elif forecast_result['eta']:
-            sys.exit(1)  # Warning - will reach threshold
+            sys.exit(EXIT_WARNING)
         else:
-            sys.exit(0)  # OK - stable or increasing
+            sys.exit(EXIT_OK)
         
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)

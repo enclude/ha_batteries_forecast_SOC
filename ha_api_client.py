@@ -1,7 +1,10 @@
 """Home Assistant API client for fetching sensor data."""
 import requests
+import logging
 from datetime import datetime, timedelta
 from dateutil import parser as date_parser
+
+logger = logging.getLogger(__name__)
 
 
 class HomeAssistantClient:
@@ -59,6 +62,7 @@ class HomeAssistantClient:
             
             # Extract state changes
             history_data = []
+            skipped_count = 0
             for state in data[0]:
                 try:
                     # Parse timestamp
@@ -69,13 +73,20 @@ class HomeAssistantClient:
                     
                     # Skip non-numeric states
                     if state_value in ['unknown', 'unavailable', 'None', None]:
+                        skipped_count += 1
+                        logger.debug(f"Skipped non-numeric state: {state_value}")
                         continue
                     
                     value = float(state_value)
                     history_data.append((timestamp, value))
                 except (ValueError, KeyError) as e:
                     # Skip invalid entries
+                    skipped_count += 1
+                    logger.debug(f"Skipped invalid entry: {e}")
                     continue
+            
+            if skipped_count > 0:
+                logger.info(f"Skipped {skipped_count} invalid/non-numeric entries")
             
             # Sort by timestamp
             history_data.sort(key=lambda x: x[0])

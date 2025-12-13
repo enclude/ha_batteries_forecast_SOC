@@ -28,8 +28,8 @@ class BatteryForecast:
                 - r_value: Correlation coefficient
                 - std_err: Standard error
         """
-        if len(history_data) < 2:
-            raise ValueError("Not enough data points for trend analysis (minimum 2 required)")
+        if len(history_data) < 3:
+            raise ValueError("Not enough data points for trend analysis (minimum 3 required for reliable results)")
         
         # Convert timestamps to seconds since first measurement
         first_time = history_data[0][0]
