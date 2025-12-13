@@ -126,6 +126,82 @@ class PstrykApiClient:
         logger.info(f"Found cheapest {hours_needed}h window: {best_window['start_hour']}:00 - {best_window['end_hour']}:00")
         return best_window
     
+    def get_cheapest_hours_multiple_periods(self, total_hours_needed, date=None):
+        """Find cheapest hours for charging, allowing multiple non-consecutive periods.
+        
+        Args:
+            total_hours_needed: Total number of hours needed for charging
+            date: Date to analyze (datetime object). Defaults to today.
+        
+        Returns:
+            list: List of charging periods, each containing:
+                {
+                    'start_hour': int (0-23),
+                    'end_hour': int (0-23),
+                    'hours': int,
+                    'avg_price': float,
+                    'total_cost_per_kwh': float,
+                    'timestamps': list of datetime objects
+                }
+                Sorted by start_hour.
+        
+        Raises:
+            Exception: If API request fails or insufficient data
+        """
+        prices = self.get_electricity_prices(date)
+        
+        if len(prices) < total_hours_needed:
+            raise Exception(f"Insufficient price data: need {total_hours_needed} hours, got {len(prices)}")
+        
+        # Sort prices by cost to find the cheapest hours
+        sorted_prices = sorted(prices, key=lambda p: p['price'])
+        
+        # Select the cheapest N hours
+        cheapest_hours = sorted(sorted_prices[:total_hours_needed], key=lambda p: p['hour'])
+        
+        # Group consecutive hours into periods
+        periods = []
+        if not cheapest_hours:
+            return periods
+        
+        current_period = [cheapest_hours[0]]
+        
+        for i in range(1, len(cheapest_hours)):
+            if cheapest_hours[i]['hour'] == current_period[-1]['hour'] + 1:
+                # Consecutive hour, add to current period
+                current_period.append(cheapest_hours[i])
+            else:
+                # Non-consecutive, start a new period
+                periods.append(self._create_period_info(current_period))
+                current_period = [cheapest_hours[i]]
+        
+        # Add the last period
+        periods.append(self._create_period_info(current_period))
+        
+        logger.info(f"Found {len(periods)} charging period(s) totaling {total_hours_needed} hours")
+        for period in periods:
+            logger.info(f"  Period: {period['start_hour']:02d}:00 - {period['end_hour']:02d}:00 ({period['hours']}h at avg {period['avg_price']:.4f} PLN/kWh)")
+        
+        return periods
+    
+    def _create_period_info(self, hours):
+        """Create period information dictionary from a list of hours.
+        
+        Args:
+            hours: List of price dictionaries for consecutive hours
+        
+        Returns:
+            dict: Period information
+        """
+        return {
+            'start_hour': hours[0]['hour'],
+            'end_hour': hours[-1]['hour'],
+            'hours': len(hours),
+            'avg_price': sum(h['price'] for h in hours) / len(hours),
+            'total_cost_per_kwh': sum(h['price'] for h in hours),
+            'timestamps': [h['timestamp'] for h in hours]
+        }
+    
     def get_price_forecast_tomorrow(self):
         """Fetch electricity prices for tomorrow.
         

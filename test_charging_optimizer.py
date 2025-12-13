@@ -132,11 +132,12 @@ def test_rule_based_recommendation_critical_battery():
     # Critical battery forecast (8% SOC)
     forecast_data = create_mock_forecast_data(soc=8.0, declining=True)
     cheapest_window = create_mock_cheapest_window()
+    cheapest_periods = [cheapest_window]
     total_solar = 5.0
     
     recommendation = optimizer._rule_based_recommendation(
         forecast_data,
-        cheapest_window,
+        cheapest_periods,
         total_solar
     )
     
@@ -165,11 +166,12 @@ def test_rule_based_recommendation_healthy_battery():
     # Healthy battery forecast (80% SOC, not declining)
     forecast_data = create_mock_forecast_data(soc=80.0, declining=False)
     cheapest_window = create_mock_cheapest_window()
+    cheapest_periods = [cheapest_window]
     total_solar = 25.0  # Good solar forecast
     
     recommendation = optimizer._rule_based_recommendation(
         forecast_data,
-        cheapest_window,
+        cheapest_periods,
         total_solar
     )
     
@@ -231,12 +233,15 @@ def test_format_recommendation():
     recommendation = {
         'should_charge': True,
         'recommended_hours': [2, 3, 4, 5],
+        'charging_periods': [create_mock_cheapest_window()],
+        'hours_needed': 4,
         'start_hour': 2,
         'end_hour': 5,
         'reasoning': 'Battery is critically low | Cheapest rates at night',
         'priority': 'high',
         'price_analysis': {
             'cheapest_window': create_mock_cheapest_window(),
+            'cheapest_periods': [create_mock_cheapest_window()],
             'prices': create_mock_price_data()
         },
         'solar_forecast': {
@@ -246,7 +251,13 @@ def test_format_recommendation():
             },
             'total_expected': 18.8
         },
-        'ai_recommendation': None
+        'ai_recommendation': None,
+        'battery_info': {
+            'capacity_kwh': 10,
+            'max_charging_power_kw': 5,
+            'current_soc': 8.0,
+            'target_soc': 100
+        }
     }
     
     formatted = optimizer.format_recommendation(recommendation)
@@ -272,7 +283,9 @@ def test_optimization_with_low_solar():
     
     pstryk_client = Mock()
     pstryk_client.get_electricity_prices = Mock(return_value=create_mock_price_data())
-    pstryk_client.get_cheapest_hours = Mock(return_value=create_mock_cheapest_window())
+    cheapest_window = create_mock_cheapest_window()
+    pstryk_client.get_cheapest_hours = Mock(return_value=cheapest_window)
+    pstryk_client.get_cheapest_hours_multiple_periods = Mock(return_value=[cheapest_window])
     
     optimizer = ChargingOptimizer(ha_client, pstryk_client, None)
     
@@ -285,7 +298,8 @@ def test_optimization_with_low_solar():
         'sensor.energy_production_today_4'
     ]
     
-    recommendation = optimizer.optimize_charging(forecast_data, solar_sensors, 4)
+    # Use new parameters: battery_capacity_kwh, max_charging_power_kw, allow_multiple_periods
+    recommendation = optimizer.optimize_charging(forecast_data, solar_sensors, 10, 5, True)
     
     print(f"  Should charge: {recommendation['should_charge']}")
     print(f"  Solar forecast: {recommendation['solar_forecast']['total_expected']} kWh")
@@ -296,6 +310,62 @@ def test_optimization_with_low_solar():
     assert recommendation['solar_forecast']['total_expected'] < 5.0
     
     print("✓ Low solar forecast correctly influences charging decision")
+
+
+def test_multiple_charging_periods():
+    """Test multiple non-consecutive charging periods."""
+    print("\n" + "="*60)
+    print("Test 8: Multiple Charging Periods")
+    print("="*60)
+    
+    client = PstrykApiClient()
+    
+    # Create mock price data
+    prices = create_mock_price_data()
+    
+    # Mock the get_electricity_prices method
+    client.get_electricity_prices = Mock(return_value=prices)
+    
+    # Get cheapest 6 hours which should result in multiple periods
+    periods = client.get_cheapest_hours_multiple_periods(total_hours_needed=6)
+    
+    print(f"  Number of periods: {len(periods)}")
+    print(f"  Total hours: {sum(p['hours'] for p in periods)}")
+    for i, period in enumerate(periods, 1):
+        print(f"  Period {i}: {period['start_hour']:02d}:00 - {period['end_hour']:02d}:00 ({period['hours']}h at {period['avg_price']:.4f} PLN/kWh)")
+    
+    assert len(periods) > 0
+    assert sum(p['hours'] for p in periods) == 6
+    
+    print("✓ Multiple charging periods calculation works correctly")
+
+
+def test_charging_hours_calculation():
+    """Test calculation of charging hours needed."""
+    print("\n" + "="*60)
+    print("Test 9: Charging Hours Calculation")
+    print("="*60)
+    
+    ha_client = Mock()
+    pstryk_client = Mock()
+    optimizer = ChargingOptimizer(ha_client, pstryk_client, None)
+    
+    # Test case 1: 50% SOC, 10kWh battery, 5kW charging
+    hours = optimizer.calculate_charging_hours_needed(50, 100, 10, 5)
+    print(f"  50% -> 100% with 10kWh battery and 5kW charging: {hours}h")
+    assert hours == 1  # (50% * 10kWh) / 5kW = 1h
+    
+    # Test case 2: 20% SOC, 10kWh battery, 5kW charging
+    hours = optimizer.calculate_charging_hours_needed(20, 100, 10, 5)
+    print(f"  20% -> 100% with 10kWh battery and 5kW charging: {hours}h")
+    assert hours == 2  # (80% * 10kWh) / 5kW = 1.6h, rounded up to 2h
+    
+    # Test case 3: Already at 100%
+    hours = optimizer.calculate_charging_hours_needed(100, 100, 10, 5)
+    print(f"  100% -> 100%: {hours}h (no charging needed)")
+    assert hours == 0
+    
+    print("✓ Charging hours calculation works correctly")
 
 
 if __name__ == '__main__':
@@ -311,6 +381,8 @@ if __name__ == '__main__':
         test_cheapest_hours_calculation()
         test_format_recommendation()
         test_optimization_with_low_solar()
+        test_multiple_charging_periods()
+        test_charging_hours_calculation()
         
         print("\n" + "="*60)
         print("✅ All charging optimizer tests passed successfully!")

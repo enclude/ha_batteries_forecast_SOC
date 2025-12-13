@@ -69,9 +69,19 @@ class Config:
         return self.config.get('charging', {}).get('enabled', False)
     
     @property
-    def charging_hours_needed(self):
-        """Get number of hours needed for charging."""
-        return self.config.get('charging', {}).get('hours_needed', 4)
+    def battery_capacity_kwh(self):
+        """Get battery capacity in kWh."""
+        return self.config.get('charging', {}).get('battery_capacity_kwh', 10)
+    
+    @property
+    def max_charging_power_kw(self):
+        """Get maximum charging power from grid in kW."""
+        return self.config.get('charging', {}).get('max_charging_power_kw', 5)
+    
+    @property
+    def allow_multiple_periods(self):
+        """Check if multiple charging periods in a day are allowed."""
+        return self.config.get('charging', {}).get('allow_multiple_periods', True)
     
     @property
     def openai_api_key(self):

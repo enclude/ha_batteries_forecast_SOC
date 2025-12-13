@@ -60,21 +60,51 @@ class ChargingOptimizer:
         """
         return sum(solar_data.values())
     
-    def optimize_charging(self, forecast_data, solar_sensors, hours_needed=4):
+    def calculate_charging_hours_needed(self, current_soc, target_soc, battery_capacity_kwh, max_charging_power_kw):
+        """Calculate hours needed to charge battery from current to target SOC.
+        
+        Args:
+            current_soc: Current state of charge (percentage)
+            target_soc: Target state of charge (percentage)
+            battery_capacity_kwh: Battery capacity in kWh
+            max_charging_power_kw: Maximum charging power in kW
+        
+        Returns:
+            int: Number of hours needed (rounded up)
+        """
+        import math
+        
+        # Calculate energy needed
+        soc_deficit = target_soc - current_soc
+        if soc_deficit <= 0:
+            return 0
+        
+        energy_needed_kwh = (soc_deficit / 100) * battery_capacity_kwh
+        
+        # Calculate hours needed
+        hours_needed = energy_needed_kwh / max_charging_power_kw
+        
+        # Round up to nearest hour
+        return math.ceil(hours_needed)
+    
+    def optimize_charging(self, forecast_data, solar_sensors, battery_capacity_kwh=10, 
+                         max_charging_power_kw=5, allow_multiple_periods=True):
         """Optimize battery charging schedule.
         
         Args:
             forecast_data: Battery SOC forecast data from BatteryForecast
             solar_sensors: List of solar production forecast sensor IDs
-            hours_needed: Number of consecutive hours needed for charging
+            battery_capacity_kwh: Battery capacity in kWh
+            max_charging_power_kw: Maximum charging power from grid in kW
+            allow_multiple_periods: Allow multiple non-consecutive charging periods
         
         Returns:
             dict: Comprehensive charging recommendation:
                 {
                     'should_charge': bool,
                     'recommended_hours': list of int,
-                    'start_hour': int or None,
-                    'end_hour': int or None,
+                    'charging_periods': list of dicts (multiple periods),
+                    'hours_needed': int,
                     'reasoning': str,
                     'price_analysis': dict,
                     'solar_forecast': dict,
@@ -83,10 +113,34 @@ class ChargingOptimizer:
                 }
         """
         try:
+            # Calculate hours needed based on current SOC
+            current_soc = forecast_data['current_soc']
+            target_soc = 100  # Assume we want to charge to 100%
+            hours_needed = self.calculate_charging_hours_needed(
+                current_soc, target_soc, battery_capacity_kwh, max_charging_power_kw
+            )
+            
+            logger.info(f"Calculated charging hours needed: {hours_needed}h (SOC: {current_soc:.1f}% -> {target_soc}%)")
+            
             # Get electricity prices
             logger.info("Fetching electricity prices...")
             prices_today = self.pstryk_client.get_electricity_prices()
-            cheapest_window = self.pstryk_client.get_cheapest_hours(hours_needed)
+            
+            # Get cheapest charging windows/periods
+            if allow_multiple_periods and hours_needed > 0:
+                cheapest_periods = self.pstryk_client.get_cheapest_hours_multiple_periods(hours_needed)
+                # Also get single window for comparison
+                try:
+                    cheapest_window = self.pstryk_client.get_cheapest_hours(hours_needed)
+                except:
+                    cheapest_window = None
+            else:
+                if hours_needed > 0:
+                    cheapest_window = self.pstryk_client.get_cheapest_hours(hours_needed)
+                    cheapest_periods = [cheapest_window]
+                else:
+                    cheapest_window = None
+                    cheapest_periods = []
             
             # Get solar forecast
             logger.info("Fetching solar production forecast...")
@@ -97,11 +151,14 @@ class ChargingOptimizer:
             result = {
                 'should_charge': False,
                 'recommended_hours': [],
+                'charging_periods': cheapest_periods,
+                'hours_needed': hours_needed,
                 'start_hour': None,
                 'end_hour': None,
                 'reasoning': '',
                 'price_analysis': {
                     'cheapest_window': cheapest_window,
+                    'cheapest_periods': cheapest_periods,
                     'prices': prices_today
                 },
                 'solar_forecast': {
@@ -109,13 +166,19 @@ class ChargingOptimizer:
                     'total_expected': total_solar
                 },
                 'ai_recommendation': None,
-                'priority': 'low'
+                'priority': 'low',
+                'battery_info': {
+                    'capacity_kwh': battery_capacity_kwh,
+                    'max_charging_power_kw': max_charging_power_kw,
+                    'current_soc': current_soc,
+                    'target_soc': target_soc
+                }
             }
             
             # Rule-based analysis
             rule_based_decision = self._rule_based_recommendation(
                 forecast_data, 
-                cheapest_window, 
+                cheapest_periods,
                 total_solar
             )
             
@@ -164,12 +227,12 @@ class ChargingOptimizer:
                 'priority': 'low'
             }
     
-    def _rule_based_recommendation(self, forecast_data, cheapest_window, total_solar, current_time=None):
+    def _rule_based_recommendation(self, forecast_data, cheapest_periods, total_solar, current_time=None):
         """Generate rule-based charging recommendation.
         
         Args:
             forecast_data: Battery SOC forecast data
-            cheapest_window: Cheapest price window from pstryk.pl
+            cheapest_periods: List of cheapest price periods from pstryk.pl
             total_solar: Total expected solar production
             current_time: Current datetime (for testing), defaults to datetime.now()
         
@@ -218,24 +281,36 @@ class ChargingOptimizer:
             reasoning_parts.append(f"Good solar forecast: {total_solar:.1f} kWh expected")
         
         # Add price information
-        if cheapest_window:
-            reasoning_parts.append(
-                f"Cheapest charging window: {cheapest_window['start_hour']:02d}:00-{cheapest_window['end_hour']:02d}:00 "
-                f"at avg {cheapest_window['avg_price']:.4f} PLN/kWh"
-            )
+        if cheapest_periods:
+            if len(cheapest_periods) == 1:
+                period = cheapest_periods[0]
+                reasoning_parts.append(
+                    f"Cheapest charging window: {period['start_hour']:02d}:00-{period['end_hour']:02d}:00 "
+                    f"({period['hours']}h at avg {period['avg_price']:.4f} PLN/kWh)"
+                )
+            else:
+                total_hours = sum(p['hours'] for p in cheapest_periods)
+                avg_price = sum(p['total_cost_per_kwh'] for p in cheapest_periods) / total_hours
+                reasoning_parts.append(
+                    f"Cheapest charging: {len(cheapest_periods)} period(s), {total_hours}h total "
+                    f"at avg {avg_price:.4f} PLN/kWh"
+                )
         
         # Determine recommended hours
         recommended_hours = []
         start_hour = None
         end_hour = None
         
-        if should_charge and cheapest_window:
-            recommended_hours = list(range(
-                cheapest_window['start_hour'],
-                cheapest_window['end_hour'] + 1
-            ))
-            start_hour = cheapest_window['start_hour']
-            end_hour = cheapest_window['end_hour']
+        if should_charge and cheapest_periods:
+            # Collect all hours from all periods
+            for period in cheapest_periods:
+                recommended_hours.extend(list(range(
+                    period['start_hour'],
+                    period['end_hour'] + 1
+                )))
+            recommended_hours.sort()
+            start_hour = min(recommended_hours) if recommended_hours else None
+            end_hour = max(recommended_hours) if recommended_hours else None
         
         reasoning = " | ".join(reasoning_parts) if reasoning_parts else "No charging needed"
         
@@ -262,15 +337,36 @@ class ChargingOptimizer:
         lines.append("Battery Charging Recommendation")
         lines.append("=" * 60)
         
+        # Battery info
+        if recommendation.get('battery_info'):
+            battery = recommendation['battery_info']
+            lines.append(f"Battery: {battery['capacity_kwh']}kWh capacity, {battery['max_charging_power_kw']}kW max charging power")
+            lines.append(f"Current SOC: {battery['current_soc']:.1f}%")
+        
+        if recommendation.get('hours_needed'):
+            lines.append(f"Charging hours needed: {recommendation['hours_needed']}h")
+        
         # Charging decision
         if recommendation['should_charge']:
-            lines.append(f"✓ Charging RECOMMENDED (Priority: {recommendation['priority'].upper()})")
-            if recommendation['start_hour'] is not None:
+            lines.append(f"\n✓ Charging RECOMMENDED (Priority: {recommendation['priority'].upper()})")
+            
+            # Show charging periods
+            if recommendation.get('charging_periods'):
+                periods = recommendation['charging_periods']
+                if len(periods) == 1:
+                    period = periods[0]
+                    lines.append(f"  Recommended period: {period['start_hour']:02d}:00 - {period['end_hour']:02d}:00 ({period['hours']}h)")
+                else:
+                    lines.append(f"  Recommended periods ({len(periods)} periods):")
+                    for i, period in enumerate(periods, 1):
+                        lines.append(f"    {i}. {period['start_hour']:02d}:00 - {period['end_hour']:02d}:00 ({period['hours']}h at {period['avg_price']:.4f} PLN/kWh)")
+            elif recommendation['start_hour'] is not None:
                 lines.append(f"  Recommended window: {recommendation['start_hour']:02d}:00 - {recommendation['end_hour']:02d}:00")
-            if recommendation['recommended_hours']:
-                lines.append(f"  Hours: {', '.join(f'{h:02d}:00' for h in recommendation['recommended_hours'])}")
+            
+            if recommendation['recommended_hours'] and len(recommendation['recommended_hours']) <= 10:
+                lines.append(f"  All hours: {', '.join(f'{h:02d}:00' for h in recommendation['recommended_hours'])}")
         else:
-            lines.append("○ Charging NOT recommended at this time")
+            lines.append("\n○ Charging NOT recommended at this time")
         
         lines.append(f"\nReasoning:")
         lines.append(f"  {recommendation['reasoning']}")
@@ -285,11 +381,18 @@ class ChargingOptimizer:
                 lines.append(f"  {sensor_short}: {value:.2f} kWh")
         
         # Price analysis
-        if recommendation['price_analysis'].get('cheapest_window'):
-            window = recommendation['price_analysis']['cheapest_window']
+        if recommendation['price_analysis'].get('cheapest_periods'):
+            periods = recommendation['price_analysis']['cheapest_periods']
             lines.append(f"\nElectricity Price Analysis:")
-            lines.append(f"  Cheapest {window['hours']}h window: {window['start_hour']:02d}:00 - {window['end_hour']:02d}:00")
-            lines.append(f"  Average price: {window['avg_price']:.4f} PLN/kWh")
+            if len(periods) == 1:
+                period = periods[0]
+                lines.append(f"  Cheapest period: {period['start_hour']:02d}:00 - {period['end_hour']:02d}:00 ({period['hours']}h)")
+                lines.append(f"  Average price: {period['avg_price']:.4f} PLN/kWh")
+            else:
+                total_hours = sum(p['hours'] for p in periods)
+                avg_price = sum(p['total_cost_per_kwh'] for p in periods) / total_hours if total_hours > 0 else 0
+                lines.append(f"  {len(periods)} period(s) totaling {total_hours}h")
+                lines.append(f"  Average price: {avg_price:.4f} PLN/kWh")
         
         # AI analysis if available
         if recommendation.get('ai_recommendation'):

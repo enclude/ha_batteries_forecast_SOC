@@ -25,7 +25,9 @@ forecast:
 # Charging Optimization Configuration
 charging:
   enabled: true  # Enable charging optimization
-  hours_needed: 4  # Number of consecutive hours needed for full charge
+  battery_capacity_kwh: 10  # Battery capacity in kWh
+  max_charging_power_kw: 5  # Maximum charging power from grid in kW
+  allow_multiple_periods: true  # Allow multiple charging periods in a day
   
 # OpenAI Configuration (optional, for AI-powered recommendations)
 openai:

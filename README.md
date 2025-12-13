@@ -67,7 +67,9 @@ forecast:
 
 charging:
   enabled: true  # Włącz optymalizację ładowania
-  hours_needed: 4  # Ile godzin potrzeba na pełne naładowanie
+  battery_capacity_kwh: 10  # Pojemność baterii w kWh
+  max_charging_power_kw: 5  # Maksymalna moc ładowania z sieci w kW
+  allow_multiple_periods: true  # Pozwól na wiele okresów ładowania w ciągu dnia
 
 openai:  # Opcjonalne - dla rekomendacji AI
   api_key: ""  # Klucz API OpenAI (zostaw puste aby wyłączyć)
@@ -117,7 +119,11 @@ solar_sensors:
 
 Konfiguracja modułu optymalizacji ładowania:
 - **enabled**: `true/false` - włącz/wyłącz optymalizację
-- **hours_needed**: Ile godzin potrzeba na pełne naładowanie baterii
+- **battery_capacity_kwh**: Pojemność baterii w kWh (np. 10)
+- **max_charging_power_kw**: Maksymalna moc ładowania z sieci w kW (np. 5)
+- **allow_multiple_periods**: `true/false` - pozwól na wiele okresów ładowania w ciągu dnia
+
+System automatycznie oblicza ile godzin ładowania potrzeba na podstawie aktualnego SOC, pojemności baterii i mocy ładowania.
 
 ### OpenAI (opcjonalne)
 
@@ -195,14 +201,19 @@ Forecast:
 ============================================================
 Battery Charging Recommendation
 ============================================================
+Battery: 10kWh capacity, 5kW max charging power
+Current SOC: 45.3%
+Charging hours needed: 2h
+
 ✓ Charging RECOMMENDED (Priority: MEDIUM)
-  Recommended window: 02:00 - 05:00
-  Hours: 02:00, 03:00, 04:00, 05:00
+  Recommended periods (2 periods):
+    1. 02:00 - 02:00 (1h at 0.4500 PLN/kWh)
+    2. 04:00 - 04:00 (1h at 0.4800 PLN/kWh)
 
 Reasoning:
   Battery forecast shows decline reaching threshold in 16.3 hours | 
   Low solar forecast: 3.5 kWh expected | 
-  Cheapest charging window: 02:00-05:00 at avg 0.4823 PLN/kWh
+  Cheapest charging: 2 period(s), 2h total at avg 0.4650 PLN/kWh
 
 Solar Production Forecast:
   Total expected: 3.50 kWh
@@ -212,8 +223,8 @@ Solar Production Forecast:
   4: 0.60 kWh
 
 Electricity Price Analysis:
-  Cheapest 4h window: 02:00 - 05:00
-  Average price: 0.4823 PLN/kWh
+  2 period(s) totaling 2h
+  Average price: 0.4650 PLN/kWh
 ============================================================
 ```
 

@@ -123,11 +123,14 @@ def main():
                 # Get charging recommendation
                 if args.verbose:
                     print("Calculating optimal charging strategy...")
+                    print(f"Battery: {config.battery_capacity_kwh}kWh, Max charging: {config.max_charging_power_kw}kW")
                 
                 recommendation = optimizer.optimize_charging(
                     forecast_result,
                     config.solar_sensors,
-                    config.charging_hours_needed
+                    config.battery_capacity_kwh,
+                    config.max_charging_power_kw,
+                    config.allow_multiple_periods
                 )
                 
                 # Display recommendation

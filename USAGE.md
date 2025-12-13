@@ -81,8 +81,15 @@ Enable and configure charging optimization:
 ```yaml
 charging:
   enabled: true  # true/false
-  hours_needed: 4  # hours needed for full charge
+  battery_capacity_kwh: 10  # Battery capacity in kWh
+  max_charging_power_kw: 5  # Maximum charging power in kW
+  allow_multiple_periods: true  # Allow multiple charging periods per day
 ```
+
+The system automatically calculates required charging hours based on:
+- Current battery SOC
+- Battery capacity
+- Maximum charging power
 
 ### OpenAI Integration (Optional)
 Add OpenAI API key for AI-powered recommendations:
