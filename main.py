@@ -88,7 +88,7 @@ def main():
         if len(history_data) < 3:
             print(f"Warning: Only {len(history_data)} data points available (minimum 3 required for reliable trend analysis)")
             print("\nPossible solutions:")
-            print("  1. Increase 'history_minutes' in config.yaml (current: {})".format(config.history_minutes))
+            print(f"  1. Increase 'history_minutes' in config.yaml (current: {config.history_minutes})")
             print("  2. Wait for more data to be recorded by Home Assistant")
             print("  3. Check sensor recording frequency in Home Assistant configuration")
             print("  4. Verify the sensor is updating regularly (check in Developer Tools → States)")

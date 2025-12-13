@@ -6,6 +6,9 @@ from dateutil import parser as date_parser
 
 logger = logging.getLogger(__name__)
 
+# Minimum time difference (in seconds) to consider states as distinct
+MIN_STATE_TIME_DIFF_SECONDS = 1
+
 
 class HomeAssistantClient:
     """Client for interacting with Home Assistant API."""
@@ -104,7 +107,7 @@ class HomeAssistantClient:
                     current_value = self.get_current_state(entity_id)
                     
                     # Check if current state is not already in history
-                    if not history_data or (current_time - history_data[-1][0]).total_seconds() > 1:
+                    if not history_data or (current_time - history_data[-1][0]).total_seconds() > MIN_STATE_TIME_DIFF_SECONDS:
                         history_data.append((current_time, current_value))
                         logger.info(f"Added current state: {current_value}% at {current_time}")
                 except Exception as e:
