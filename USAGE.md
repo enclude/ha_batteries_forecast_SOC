@@ -16,11 +16,14 @@
    - Set your Home Assistant URL
    - Add your long-lived access token
    - Configure sensor name (default: `sensor.batteries_stan_pojemnosci`)
+   - Configure solar production sensors
+   - Enable charging optimization (optional)
+   - Add OpenAI API key for AI recommendations (optional)
    - Adjust time window and threshold as needed
 
 ## Usage
 
-### Basic usage:
+### Basic usage (forecast + charging optimization):
 ```bash
 python main.py
 ```
@@ -28,6 +31,11 @@ python main.py
 ### With verbose output:
 ```bash
 python main.py --verbose
+```
+
+### Forecast only (skip charging optimization):
+```bash
+python main.py --forecast-only
 ```
 
 ### With custom config file:
@@ -44,6 +52,16 @@ sensor:
   name: "sensor.your_battery_sensor_name"
 ```
 
+### Solar Sensors
+Configure solar production forecast sensors:
+```yaml
+solar_sensors:
+  - "sensor.energy_production_today"
+  - "sensor.energy_production_today_2"
+  - "sensor.energy_production_today_3"
+  - "sensor.energy_production_today_4"
+```
+
 ### Time Window
 Adjust how much historical data to analyze (in minutes):
 ```yaml
@@ -58,11 +76,37 @@ forecast:
   threshold_percent: 5  # 5-20% typical values
 ```
 
+### Charging Optimization
+Enable and configure charging optimization:
+```yaml
+charging:
+  enabled: true  # true/false
+  battery_capacity_kwh: 10  # Battery capacity in kWh
+  max_charging_power_kw: 5  # Maximum charging power in kW
+  allow_multiple_periods: true  # Allow multiple charging periods per day
+```
+
+The system automatically calculates required charging hours based on:
+- Current battery SOC
+- Battery capacity
+- Maximum charging power
+
+### OpenAI Integration (Optional)
+Add OpenAI API key for AI-powered recommendations:
+```yaml
+openai:
+  api_key: "sk-..."  # Leave empty to use rule-based system
+```
+
 ## Testing
 
 Run the test suite to verify installation:
 ```bash
+# Test battery forecasting
 python test_forecast.py
+
+# Test charging optimization
+python test_charging_optimizer.py
 ```
 
 ## Exit Codes
@@ -73,6 +117,7 @@ python test_forecast.py
 
 ## Example Output
 
+### Forecast Only
 ```
 ============================================================
 Battery SOC Forecast
@@ -88,6 +133,45 @@ Trend Analysis:
 Forecast:
   ETA to 5%: 2025-12-14 13:45:30
   Time remaining: 16 hours 15 minutes
+============================================================
+```
+
+### With Charging Optimization
+```
+============================================================
+Battery SOC Forecast
+============================================================
+Current SOC: 45.30%
+Threshold: 5%
+
+Trend Analysis:
+  Rate of change: -2.5000% per hour
+  Correlation (R): -0.9850
+  Declining: Yes
+
+Forecast:
+  ETA to 5%: 2025-12-14 13:45:30
+  Time remaining: 16 hours 15 minutes
+============================================================
+
+============================================================
+Battery Charging Recommendation
+============================================================
+✓ Charging RECOMMENDED (Priority: MEDIUM)
+  Recommended window: 02:00 - 05:00
+  Hours: 02:00, 03:00, 04:00, 05:00
+
+Reasoning:
+  Battery forecast shows decline reaching threshold in 16.3 hours | 
+  Low solar forecast: 3.5 kWh expected | 
+  Cheapest charging window: 02:00-05:00 at avg 0.4823 PLN/kWh
+
+Solar Production Forecast:
+  Total expected: 3.50 kWh
+
+Electricity Price Analysis:
+  Cheapest 4h window: 02:00 - 05:00
+  Average price: 0.4823 PLN/kWh
 ============================================================
 ```
 
