@@ -5,13 +5,21 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
+# Default timeout for API requests (seconds)
+DEFAULT_TIMEOUT = 30
+
 
 class PstrykApiClient:
     """Client for interacting with pstryk.pl API."""
     
-    def __init__(self):
-        """Initialize pstryk.pl API client."""
+    def __init__(self, timeout=None):
+        """Initialize pstryk.pl API client.
+        
+        Args:
+            timeout: Request timeout in seconds (default: 30)
+        """
         self.base_url = "https://api.pstryk.pl"
+        self.timeout = timeout or DEFAULT_TIMEOUT
     
     def get_electricity_prices(self, date=None):
         """Fetch electricity prices for a specific date.
@@ -44,7 +52,7 @@ class PstrykApiClient:
             date_str = date.strftime('%Y-%m-%d')
             endpoint = f"{self.base_url}/prices/{date_str}"
             
-            response = requests.get(endpoint, timeout=30)
+            response = requests.get(endpoint, timeout=self.timeout)
             response.raise_for_status()
             
             data = response.json()

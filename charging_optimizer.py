@@ -4,6 +4,12 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# Configuration constants
+CRITICAL_SOC_MULTIPLIER = 2  # Multiplier for critical battery threshold
+LOW_SOLAR_THRESHOLD_KWH = 5.0  # Threshold for low solar production forecast
+HOURS_TO_THRESHOLD_URGENT = 12  # Hours to threshold for high priority
+HOURS_TO_THRESHOLD_MEDIUM = 24  # Hours to threshold for medium priority
+
 
 class ChargingOptimizer:
     """Optimize battery charging based on multiple data sources."""
@@ -178,7 +184,7 @@ class ChargingOptimizer:
         reasoning_parts = []
         
         # Check if battery is critically low
-        if current_soc <= threshold * 2:  # Below 2x threshold (e.g., 10% if threshold is 5%)
+        if current_soc <= threshold * CRITICAL_SOC_MULTIPLIER:
             should_charge = True
             priority = 'high'
             reasoning_parts.append(f"Battery is critically low at {current_soc:.1f}%")
@@ -188,19 +194,19 @@ class ChargingOptimizer:
             eta = forecast_data['eta']
             hours_to_threshold = (eta - datetime.now()).total_seconds() / 3600
             
-            if hours_to_threshold < 12:
+            if hours_to_threshold < HOURS_TO_THRESHOLD_URGENT:
                 should_charge = True
                 priority = 'high'
                 reasoning_parts.append(f"Battery will reach threshold in {hours_to_threshold:.1f} hours")
-            elif hours_to_threshold < 24:
+            elif hours_to_threshold < HOURS_TO_THRESHOLD_MEDIUM:
                 should_charge = True
                 priority = 'medium'
                 reasoning_parts.append(f"Battery forecast shows decline reaching threshold in {hours_to_threshold:.1f} hours")
         
         # Check solar forecast - if low, consider charging
-        if total_solar < 5.0:  # Less than 5 kWh expected
+        if total_solar < LOW_SOLAR_THRESHOLD_KWH:
             reasoning_parts.append(f"Low solar forecast: {total_solar:.1f} kWh expected")
-            if not should_charge and current_soc < threshold * 4:  # Below 20% if threshold is 5%
+            if not should_charge and current_soc < threshold * CRITICAL_SOC_MULTIPLIER * 2:
                 should_charge = True
                 priority = 'medium'
         else:

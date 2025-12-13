@@ -4,18 +4,22 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
+# Default model for cost-effective recommendations
+DEFAULT_MODEL = "gpt-4o-mini"
+
 
 class OpenAIChargingAdvisor:
     """OpenAI-powered charging advisor for battery optimization."""
     
-    def __init__(self, api_key):
+    def __init__(self, api_key, model=None):
         """Initialize OpenAI API client.
         
         Args:
             api_key: OpenAI API key
+            model: OpenAI model to use (default: gpt-4o-mini)
         """
         self.client = OpenAI(api_key=api_key)
-        self.model = "gpt-4o-mini"  # Cost-effective model for this task
+        self.model = model or DEFAULT_MODEL
     
     def analyze_charging_strategy(self, forecast_data, price_data, solar_forecast):
         """Analyze data and recommend optimal charging strategy.

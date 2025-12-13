@@ -7,6 +7,12 @@ from charging_optimizer import ChargingOptimizer
 from pstryk_api_client import PstrykApiClient
 
 
+# Test configuration constants
+SOC_CHANGE_RANGE = 10.0  # SOC change range for test data
+DATA_POINTS = 19  # Number of data points in test history
+TEST_INTERVAL_MINUTES = 5  # Interval between test data points
+
+
 def create_mock_forecast_data(soc=50.0, declining=True):
     """Create mock forecast data for testing."""
     forecaster = BatteryForecast(threshold_percent=5)
@@ -14,9 +20,9 @@ def create_mock_forecast_data(soc=50.0, declining=True):
     # Create declining battery data
     start_time = datetime.now() - timedelta(minutes=90)
     history_data = []
-    for i in range(19):
-        time = start_time + timedelta(minutes=i*5)
-        value = soc - (10.0 * i / 18) if declining else soc + (10.0 * i / 18)
+    for i in range(DATA_POINTS):
+        time = start_time + timedelta(minutes=i * TEST_INTERVAL_MINUTES)
+        value = soc - (SOC_CHANGE_RANGE * i / (DATA_POINTS - 1)) if declining else soc + (SOC_CHANGE_RANGE * i / (DATA_POINTS - 1))
         history_data.append((time, value))
     
     return forecaster.forecast_threshold_time(history_data)
