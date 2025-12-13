@@ -87,3 +87,18 @@ class Config:
     def openai_api_key(self):
         """Get OpenAI API key."""
         return self.config.get('openai', {}).get('api_key', '')
+    
+    @property
+    def pstryk_api_key(self):
+        """Get pstryk.pl API key."""
+        return self.config.get('pstryk', {}).get('api_key', '')
+    
+    @property
+    def pstryk_timeout(self):
+        """Get pstryk.pl API timeout in seconds."""
+        return self.config.get('pstryk', {}).get('timeout', 30)
+    
+    @property
+    def pstryk_base_url(self):
+        """Get pstryk.pl API base URL."""
+        return self.config.get('pstryk', {}).get('base_url', 'https://api.pstryk.pl')

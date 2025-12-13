@@ -12,13 +12,16 @@ DEFAULT_TIMEOUT = 30
 class PstrykApiClient:
     """Client for interacting with pstryk.pl API."""
     
-    def __init__(self, timeout=None):
+    def __init__(self, api_key=None, timeout=None, base_url=None):
         """Initialize pstryk.pl API client.
         
         Args:
+            api_key: API key for authentication (optional)
             timeout: Request timeout in seconds (default: 30)
+            base_url: Base URL for API (default: https://api.pstryk.pl)
         """
-        self.base_url = "https://api.pstryk.pl"
+        self.api_key = api_key
+        self.base_url = base_url or "https://api.pstryk.pl"
         self.timeout = timeout or DEFAULT_TIMEOUT
     
     def get_electricity_prices(self, date=None):
@@ -53,7 +56,12 @@ class PstrykApiClient:
             date_str = date.strftime('%Y-%m-%d')
             endpoint = f"{self.base_url}/integrations/api/prices/{date_str}"
             
-            response = requests.get(endpoint, timeout=self.timeout)
+            # Prepare headers with API key if provided
+            headers = {}
+            if self.api_key:
+                headers['Authorization'] = f'Bearer {self.api_key}'
+            
+            response = requests.get(endpoint, headers=headers, timeout=self.timeout)
             response.raise_for_status()
             
             data = response.json()

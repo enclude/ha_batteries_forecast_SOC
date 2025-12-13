@@ -34,5 +34,9 @@ openai:
   api_key: ""  # OpenAI API key (leave empty to disable AI recommendations)
   
 # pstryk.pl API Configuration
-# Note: pstryk.pl API does not require authentication
+pstryk:
+  api_key: ""  # API key (optional, leave empty if not required)
+  timeout: 30  # Request timeout in seconds
+  base_url: "https://api.pstryk.pl"  # Base API URL
+# Note: pstryk.pl API currently does not require authentication
 # API documentation: https://api.pstryk.pl/integrations/swagger/

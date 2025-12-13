@@ -76,6 +76,11 @@ charging:
 
 openai:  # Opcjonalne - dla rekomendacji AI
   api_key: ""  # Klucz API OpenAI (zostaw puste aby wyłączyć)
+
+pstryk:  # Konfiguracja API pstryk.pl (opcjonalne)
+  api_key: ""  # Klucz API (opcjonalnie, obecnie nie wymagany)
+  timeout: 30  # Limit czasu żądania w sekundach
+  base_url: "https://api.pstryk.pl"  # Bazowy URL API
 ```
 
 ## Konfiguracja

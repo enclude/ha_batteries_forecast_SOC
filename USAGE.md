@@ -91,6 +91,17 @@ The system automatically calculates required charging hours based on:
 - Battery capacity
 - Maximum charging power
 
+### pstryk.pl API Configuration (Optional)
+Configure pstryk.pl API settings for electricity price data:
+```yaml
+pstryk:
+  api_key: ""  # API key (optional, currently not required)
+  timeout: 30  # Request timeout in seconds
+  base_url: "https://api.pstryk.pl"  # Base API URL
+```
+
+**Note:** pstryk.pl API currently does not require authentication. These settings are optional and can be left at their defaults.
+
 ### OpenAI Integration (Optional)
 Add OpenAI API key for AI-powered recommendations:
 ```yaml

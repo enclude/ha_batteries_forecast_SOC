@@ -105,8 +105,12 @@ def main():
                     print("Running charging optimization...")
                     print("="*60)
                 
-                # Initialize pstryk.pl client
-                pstryk_client = PstrykApiClient()
+                # Initialize pstryk.pl client with configuration
+                pstryk_client = PstrykApiClient(
+                    api_key=config.pstryk_api_key if config.pstryk_api_key else None,
+                    timeout=config.pstryk_timeout,
+                    base_url=config.pstryk_base_url
+                )
                 
                 # Initialize OpenAI advisor if API key is provided
                 openai_advisor = None
