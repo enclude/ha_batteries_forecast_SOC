@@ -48,9 +48,10 @@ class PstrykApiClient:
         
         try:
             # pstryk.pl API endpoint for electricity prices
+            # Using integrations API as documented at https://api.pstryk.pl/integrations/swagger/
             # Format: YYYY-MM-DD
             date_str = date.strftime('%Y-%m-%d')
-            endpoint = f"{self.base_url}/prices/{date_str}"
+            endpoint = f"{self.base_url}/integrations/api/prices/{date_str}"
             
             response = requests.get(endpoint, timeout=self.timeout)
             response.raise_for_status()
@@ -58,15 +59,61 @@ class PstrykApiClient:
             data = response.json()
             
             # Parse the response into structured format
+            # The API may return different formats:
+            # 1. {"00:00": 0.50, "01:00": 0.48, ...} - dict with hour keys
+            # 2. [{"hour": 0, "price": 0.50}, ...] - list of objects
+            # 3. {"prices": [...]} - nested structure
             prices = []
-            for hour in range(24):
-                hour_key = f"{hour:02d}:00"
-                if hour_key in data:
-                    prices.append({
-                        'hour': hour,
-                        'price': float(data[hour_key]),
-                        'timestamp': datetime.combine(date, datetime.min.time()).replace(hour=hour)
-                    })
+            
+            # Handle different response formats
+            if isinstance(data, dict):
+                # Check if data has a 'prices' or similar key
+                if 'prices' in data:
+                    price_data = data['prices']
+                    if isinstance(price_data, list):
+                        # Format: {"prices": [{"hour": 0, "price": 0.50}, ...]}
+                        for item in price_data:
+                            if isinstance(item, dict) and 'hour' in item and 'price' in item:
+                                hour = int(item['hour'])
+                                prices.append({
+                                    'hour': hour,
+                                    'price': float(item['price']),
+                                    'timestamp': datetime.combine(date, datetime.min.time()).replace(hour=hour)
+                                })
+                    elif isinstance(price_data, dict):
+                        # Format: {"prices": {"00:00": 0.50, ...}}
+                        for hour in range(24):
+                            hour_key = f"{hour:02d}:00"
+                            if hour_key in price_data:
+                                prices.append({
+                                    'hour': hour,
+                                    'price': float(price_data[hour_key]),
+                                    'timestamp': datetime.combine(date, datetime.min.time()).replace(hour=hour)
+                                })
+                else:
+                    # Format: {"00:00": 0.50, "01:00": 0.48, ...}
+                    for hour in range(24):
+                        hour_key = f"{hour:02d}:00"
+                        if hour_key in data:
+                            prices.append({
+                                'hour': hour,
+                                'price': float(data[hour_key]),
+                                'timestamp': datetime.combine(date, datetime.min.time()).replace(hour=hour)
+                            })
+            elif isinstance(data, list):
+                # Format: [{"hour": 0, "price": 0.50}, ...]
+                for item in data:
+                    if isinstance(item, dict) and 'hour' in item and 'price' in item:
+                        hour = int(item['hour'])
+                        prices.append({
+                            'hour': hour,
+                            'price': float(item['price']),
+                            'timestamp': datetime.combine(date, datetime.min.time()).replace(hour=hour)
+                        })
+            
+            if not prices:
+                logger.warning(f"No price data found in response for {date_str}")
+                logger.debug(f"Response data: {data}")
             
             logger.info(f"Fetched {len(prices)} hourly prices for {date_str}")
             return prices
