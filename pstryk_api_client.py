@@ -102,6 +102,8 @@ class PstrykApiClient:
             raise Exception(f"Insufficient price data: need {hours_needed} hours, got {len(prices)}")
         
         # Find the cheapest consecutive window
+        # Note: prices list contains consecutive hours (0-23), so window slicing
+        # automatically gives us consecutive hours
         best_window = None
         best_avg_price = float('inf')
         
@@ -111,6 +113,7 @@ class PstrykApiClient:
             
             if avg_price < best_avg_price:
                 best_avg_price = avg_price
+                # end_hour is the last hour in the window (e.g., for 4h starting at 2: 2,3,4,5)
                 best_window = {
                     'start_hour': window[0]['hour'],
                     'end_hour': window[-1]['hour'],

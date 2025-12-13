@@ -203,10 +203,13 @@ class ChargingOptimizer:
                 priority = 'medium'
                 reasoning_parts.append(f"Battery forecast shows decline reaching threshold in {hours_to_threshold:.1f} hours")
         
+        # Additional multiplier for low solar scenario
+        LOW_SOLAR_SOC_MULTIPLIER = 4  # Consider charging if below 4x threshold (20% if threshold is 5%)
+        
         # Check solar forecast - if low, consider charging
         if total_solar < LOW_SOLAR_THRESHOLD_KWH:
             reasoning_parts.append(f"Low solar forecast: {total_solar:.1f} kWh expected")
-            if not should_charge and current_soc < threshold * CRITICAL_SOC_MULTIPLIER * 2:
+            if not should_charge and current_soc < threshold * LOW_SOLAR_SOC_MULTIPLIER:
                 should_charge = True
                 priority = 'medium'
         else:

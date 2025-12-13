@@ -177,7 +177,11 @@ Respond in JSON format:
             if p['hour'] in recommended_hours
         ]
         
-        if not recommended_prices:
+        # Validate we have data before division
+        if not recommended_prices or len(recommended_prices) == 0:
+            return None
+        
+        if not price_data or len(price_data) == 0:
             return None
         
         # Calculate average recommended price vs overall average
