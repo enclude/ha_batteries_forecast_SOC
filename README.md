@@ -1,113 +1,113 @@
-# Battery SOC Forecast for Home Assistant
+# Prognoza SOC Baterii dla Home Assistant
 
-A Python application that reads battery State of Charge (SOC) data from Home Assistant and forecasts when the battery will reach a critical threshold based on historical trends.
+Aplikacja w Pythonie, która odczytuje dane o stanie naładowania baterii (SOC) z Home Assistant i prognozuje, kiedy bateria osiągnie krytyczny próg na podstawie historycznych trendów.
 
-## Features
+## Funkcje
 
-- 📊 Reads sensor data from local Home Assistant API
-- ⏱️ Configurable time window for historical data analysis (default: 90 minutes)
-- 🔮 Linear regression-based trend analysis and forecasting
-- ⚠️ Configurable SOC threshold for alerts (default: 5%)
-- 📈 Calculates ETA (Estimated Time of Arrival) to threshold
-- 🎯 Easy configuration via YAML file
+- 📊 Odczytuje dane z czujnika z lokalnego API Home Assistant
+- ⏱️ Konfigurowalny okres czasu do analizy danych historycznych (domyślnie: 90 minut)
+- 🔮 Analiza trendów i prognozowanie oparte na regresji liniowej
+- ⚠️ Konfigurowalny próg SOC dla alertów (domyślnie: 5%)
+- 📈 Oblicza ETA (szacowany czas dotarcia) do progu
+- 🎯 Łatwa konfiguracja za pomocą pliku YAML
 
-## Requirements
+## Wymagania
 
-- Python 3.7 or higher
-- Home Assistant instance with API access
-- Long-lived access token from Home Assistant
+- Python 3.7 lub nowszy
+- Instancja Home Assistant z dostępem do API
+- Token długoterminowego dostępu z Home Assistant
 
-## Installation
+## Instalacja
 
-1. Clone the repository:
+1. Sklonuj repozytorium:
 ```bash
 git clone https://github.com/enclude/ha_batteries_forecast_SOC.git
 cd ha_batteries_forecast_SOC
 ```
 
-2. Install dependencies:
+2. Zainstaluj zależności:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Create configuration file:
+3. Utwórz plik konfiguracyjny:
 ```bash
 cp config.yaml.example config.yaml
 ```
 
-4. Edit `config.yaml` with your Home Assistant details:
+4. Edytuj `config.yaml` swoimi danymi Home Assistant:
 ```yaml
 home_assistant:
   url: "http://your-ha-instance:8123"
   token: "YOUR_LONG_LIVED_ACCESS_TOKEN"
 
 sensor:
-  name: "sensor.batteries_stan_pojemnosci"  # Your sensor entity ID
+  name: "sensor.batteries_stan_pojemnosci"  # ID twojego czujnika
 
 time:
-  history_minutes: 90  # Historical data window
+  history_minutes: 90  # Okres danych historycznych
 
 forecast:
-  threshold_percent: 5  # Alert threshold
+  threshold_percent: 5  # Próg alertu
 ```
 
-## Configuration
+## Konfiguracja
 
-### Home Assistant Setup
+### Konfiguracja Home Assistant
 
-1. Go to your Home Assistant profile
-2. Scroll down to "Long-Lived Access Tokens"
-3. Click "Create Token"
-4. Copy the token and add it to `config.yaml`
+1. Przejdź do swojego profilu Home Assistant
+2. Przewiń w dół do "Long-Lived Access Tokens" (Tokeny długoterminowego dostępu)
+3. Kliknij "Create Token" (Utwórz token)
+4. Skopiuj token i dodaj go do `config.yaml`
 
-### Sensor Configuration
+### Konfiguracja czujnika
 
-The sensor name should be the full entity ID from Home Assistant (e.g., `sensor.batteries_stan_pojemnosci`). You can find this in:
-- Home Assistant → Developer Tools → States
-- Look for your battery sensor in the entity list
+Nazwa czujnika powinna być pełnym ID encji z Home Assistant (np. `sensor.batteries_stan_pojemnosci`). Możesz to znaleźć w:
+- Home Assistant → Developer Tools → States (Narzędzia programisty → Stany)
+- Poszukaj swojego czujnika baterii na liście encji
 
-### Time Window
+### Okres czasu
 
-The `history_minutes` parameter determines how much historical data is used for trend analysis. Recommended values:
-- **30-60 minutes**: For fast-changing batteries
-- **90 minutes**: Default, good for most use cases
-- **120-180 minutes**: For slow-draining batteries
+Parametr `history_minutes` określa, ile danych historycznych jest używanych do analizy trendu. Zalecane wartości:
+- **30-60 minut**: Dla szybko zmieniających się baterii
+- **90 minut**: Domyślnie, dobre dla większości przypadków użycia
+- **120-180 minut**: Dla wolno rozładowujących się baterii
 
-### Threshold
+### Próg
 
-The `threshold_percent` is the SOC level that triggers the forecast alert. Common values:
-- **5%**: Default, critical battery level
-- **10%**: Early warning
-- **20%**: Conservative warning
+`threshold_percent` to poziom SOC, który wyzwala alert prognozy. Typowe wartości:
+- **5%**: Domyślnie, krytyczny poziom baterii
+- **10%**: Wczesne ostrzeżenie
+- **20%**: Ostrzeżenie konserwatywne
 
-## Usage
+## Użycie
 
-Run the forecast script:
+Uruchom skrypt prognozy:
 
 ```bash
 python main.py
 ```
 
-With verbose output:
+Z szczegółowym wyjściem:
 ```bash
 python main.py --verbose
 ```
 
-With custom configuration file:
+Z własnym plikiem konfiguracyjnym:
 ```bash
 python main.py --config /path/to/config.yaml
 ```
 
-### Output
+### Wynik
 
-The script will display:
-- Current SOC percentage
-- Trend analysis (rate of change, correlation)
-- Whether the battery is declining
-- ETA to threshold (if declining)
-- Time remaining until threshold
+Skrypt wyświetli:
+- Aktualny procent SOC
+- Analiza trendu (tempo zmian, korelacja)
+- Czy bateria się rozładowuje
+- ETA do progu (jeśli się rozładowuje)
+- Pozostały czas do progu
 
-Example output:
+Przykładowe wyjście:
 ```
 ============================================================
 Battery SOC Forecast
@@ -126,54 +126,54 @@ Forecast:
 ============================================================
 ```
 
-### Exit Codes
+### Kody wyjścia
 
-- `0`: OK - Battery is stable or increasing
-- `1`: Warning - Battery will reach threshold based on forecast
-- `2`: Critical - Battery is already at or below threshold
+- `0`: OK - Bateria jest stabilna lub się ładuje
+- `1`: Ostrzeżenie - Bateria osiągnie próg zgodnie z prognozą
+- `2`: Krytyczne - Bateria jest już na progu lub poniżej
 
-## Example Integration
+## Przykładowa integracja
 
-### Cron Job
+### Zadanie Cron
 
-Run forecast every 15 minutes:
+Uruchamiaj prognozę co 15 minut:
 ```bash
 */15 * * * * cd /path/to/ha_batteries_forecast_SOC && /usr/bin/python3 main.py >> /var/log/battery_forecast.log 2>&1
 ```
 
-### Home Assistant Automation
+### Automatyzacja Home Assistant
 
-You can call this script from Home Assistant using a shell command sensor or automation.
+Możesz wywołać ten skrypt z Home Assistant używając czujnika poleceń powłoki lub automatyzacji.
 
-## Troubleshooting
+## Rozwiązywanie problemów
 
-### "No historical data available"
+### "No historical data available" (Brak dostępnych danych historycznych)
 
-- Check that the sensor name is correct in `config.yaml`
-- Verify the sensor exists in Home Assistant
-- Ensure the sensor has recorded data in the specified time window
-- Check that Home Assistant is accessible at the configured URL
+- Sprawdź, czy nazwa czujnika jest poprawna w `config.yaml`
+- Zweryfikuj, czy czujnik istnieje w Home Assistant
+- Upewnij się, że czujnik zapisał dane w określonym przedziale czasu
+- Sprawdź, czy Home Assistant jest dostępny pod skonfigurowanym adresem URL
 
-### "Failed to fetch sensor history"
+### "Failed to fetch sensor history" (Nie udało się pobrać historii czujnika)
 
-- Verify the Home Assistant URL is correct
-- Check that the access token is valid
-- Ensure Home Assistant API is accessible from your network
+- Zweryfikuj, czy adres URL Home Assistant jest poprawny
+- Sprawdź, czy token dostępu jest prawidłowy
+- Upewnij się, że API Home Assistant jest dostępne z twojej sieci
 
-### "Not enough data points for trend analysis"
+### "Not enough data points for trend analysis" (Za mało punktów danych do analizy trendu)
 
-- Increase the `history_minutes` value
-- Wait for the sensor to record more data points
-- Check if the sensor is updating regularly
+- Zwiększ wartość `history_minutes`
+- Poczekaj, aż czujnik zapisze więcej punktów danych
+- Sprawdź, czy czujnik regularnie się aktualizuje
 
-## License
+## Licencja
 
-MIT License - See [LICENSE](LICENSE) file for details
+Licencja MIT - Zobacz plik [LICENSE](LICENSE) dla szczegółów
 
-## Author
+## Autor
 
-Created by enclude
+Utworzone przez enclude
 
-## Contributing
+## Współpraca
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Wkład jest mile widziany! Śmiało przesyłaj Pull Request.
