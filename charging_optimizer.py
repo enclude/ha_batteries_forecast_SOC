@@ -7,6 +7,7 @@ logger = logging.getLogger(__name__)
 # Configuration constants
 CRITICAL_SOC_MULTIPLIER = 2  # Multiplier for critical battery threshold
 LOW_SOLAR_THRESHOLD_KWH = 5.0  # Threshold for low solar production forecast
+LOW_SOLAR_SOC_MULTIPLIER = 4  # Consider charging if below 4x threshold when solar is low
 HOURS_TO_THRESHOLD_URGENT = 12  # Hours to threshold for high priority
 HOURS_TO_THRESHOLD_MEDIUM = 24  # Hours to threshold for medium priority
 
@@ -163,17 +164,21 @@ class ChargingOptimizer:
                 'priority': 'low'
             }
     
-    def _rule_based_recommendation(self, forecast_data, cheapest_window, total_solar):
+    def _rule_based_recommendation(self, forecast_data, cheapest_window, total_solar, current_time=None):
         """Generate rule-based charging recommendation.
         
         Args:
             forecast_data: Battery SOC forecast data
             cheapest_window: Cheapest price window from pstryk.pl
             total_solar: Total expected solar production
+            current_time: Current datetime (for testing), defaults to datetime.now()
         
         Returns:
             dict: Rule-based charging decision
         """
+        if current_time is None:
+            current_time = datetime.now()
+            
         current_soc = forecast_data['current_soc']
         threshold = forecast_data['threshold']
         is_declining = forecast_data['is_declining']
@@ -192,7 +197,7 @@ class ChargingOptimizer:
         # Check if battery is declining and will reach threshold soon
         elif is_declining and forecast_data.get('eta'):
             eta = forecast_data['eta']
-            hours_to_threshold = (eta - datetime.now()).total_seconds() / 3600
+            hours_to_threshold = (eta - current_time).total_seconds() / 3600
             
             if hours_to_threshold < HOURS_TO_THRESHOLD_URGENT:
                 should_charge = True
@@ -202,9 +207,6 @@ class ChargingOptimizer:
                 should_charge = True
                 priority = 'medium'
                 reasoning_parts.append(f"Battery forecast shows decline reaching threshold in {hours_to_threshold:.1f} hours")
-        
-        # Additional multiplier for low solar scenario
-        LOW_SOLAR_SOC_MULTIPLIER = 4  # Consider charging if below 4x threshold (20% if threshold is 5%)
         
         # Check solar forecast - if low, consider charging
         if total_solar < LOW_SOLAR_THRESHOLD_KWH:

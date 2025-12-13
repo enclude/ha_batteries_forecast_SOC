@@ -178,10 +178,10 @@ Respond in JSON format:
         ]
         
         # Validate we have data before division
-        if not recommended_prices or len(recommended_prices) == 0:
+        if not recommended_prices:
             return None
         
-        if not price_data or len(price_data) == 0:
+        if not price_data:
             return None
         
         # Calculate average recommended price vs overall average

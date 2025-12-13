@@ -17,12 +17,16 @@ def create_mock_forecast_data(soc=50.0, declining=True):
     """Create mock forecast data for testing."""
     forecaster = BatteryForecast(threshold_percent=5)
     
-    # Create declining battery data
+    # Create declining or charging battery data
     start_time = datetime.now() - timedelta(minutes=90)
     history_data = []
     for i in range(DATA_POINTS):
         time = start_time + timedelta(minutes=i * TEST_INTERVAL_MINUTES)
-        value = soc - (SOC_CHANGE_RANGE * i / (DATA_POINTS - 1)) if declining else soc + (SOC_CHANGE_RANGE * i / (DATA_POINTS - 1))
+        # Calculate value based on whether battery is declining or charging
+        if declining:
+            value = soc - (SOC_CHANGE_RANGE * i / (DATA_POINTS - 1))
+        else:
+            value = soc + (SOC_CHANGE_RANGE * i / (DATA_POINTS - 1))
         history_data.append((time, value))
     
     return forecaster.forecast_threshold_time(history_data)
