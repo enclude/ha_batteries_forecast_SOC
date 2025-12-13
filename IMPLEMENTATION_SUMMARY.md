@@ -49,10 +49,21 @@ Extended `config.yaml.example` with:
 solar_sensors:           # Solar production forecast sensors
 charging:
   enabled: true          # Enable/disable optimization
-  hours_needed: 4        # Hours needed for full charge
+  battery_capacity_kwh: 10  # Battery capacity in kWh
+  max_charging_power_kw: 5  # Maximum charging power
+  allow_multiple_periods: true  # Allow multiple charging periods
 openai:
   api_key: ""           # Optional OpenAI API key
+pstryk:
+  api_key: ""           # Optional pstryk.pl API key
+  timeout: 30           # API request timeout
+  base_url: "https://api.pstryk.pl"  # API base URL
 ```
+
+The pstryk configuration allows for:
+- **API Key**: Future-proof support for authentication if pstryk.pl adds it
+- **Timeout**: Configurable request timeout for reliability
+- **Base URL**: Override for testing or API endpoint changes
 
 ### 5. Updated Main Application (`main.py`)
 - New `--forecast-only` flag to skip charging optimization
