@@ -1,14 +1,22 @@
 # Prognoza SOC Baterii dla Home Assistant
 
-Aplikacja w Pythonie, która odczytuje dane o stanie naładowania baterii (SOC) z Home Assistant i prognozuje, kiedy bateria osiągnie krytyczny próg na podstawie historycznych trendów.
+Aplikacja w Pythonie, która odczytuje dane o stanie naładowania baterii (SOC) z Home Assistant, prognozuje kiedy bateria osiągnie krytyczny próg oraz **rekomenduje optymalne godziny ładowania z sieci** na podstawie cen energii i prognozy produkcji solarnej.
 
 ## Funkcje
 
+### Prognozowanie SOC
 - 📊 Odczytuje dane z czujnika z lokalnego API Home Assistant
 - ⏱️ Konfigurowalny okres czasu do analizy danych historycznych (domyślnie: 90 minut)
 - 🔮 Analiza trendów i prognozowanie oparte na regresji liniowej
 - ⚠️ Konfigurowalny próg SOC dla alertów (domyślnie: 5%)
 - 📈 Oblicza ETA (szacowany czas dotarcia) do progu
+
+### Optymalizacja Ładowania (NOWOŚĆ!)
+- 💰 Integracja z API pstryk.pl dla cen energii elektrycznej
+- 🌞 Analiza prognozy produkcji solarnej z czujników Home Assistant
+- 🤖 Opcjonalne rekomendacje AI z wykorzystaniem OpenAI (ChatGPT)
+- ⚡ Automatyczne wyszukiwanie najtańszych godzin do ładowania
+- 📋 Rekomendacje bazujące na: prognozowanych cenach, stanie baterii i prognozie solarnej
 - 🎯 Łatwa konfiguracja za pomocą pliku YAML
 
 ## Wymagania
@@ -16,6 +24,7 @@ Aplikacja w Pythonie, która odczytuje dane o stanie naładowania baterii (SOC) 
 - Python 3.7 lub nowszy
 - Instancja Home Assistant z dostępem do API
 - Token długoterminowego dostępu z Home Assistant
+- (Opcjonalnie) Klucz API OpenAI dla rekomendacji AI
 
 ## Instalacja
 
@@ -35,7 +44,7 @@ pip install -r requirements.txt
 cp config.yaml.example config.yaml
 ```
 
-4. Edytuj `config.yaml` swoimi danymi Home Assistant:
+4. Edytuj `config.yaml` swoimi danymi:
 ```yaml
 home_assistant:
   url: "http://your-ha-instance:8123"
@@ -44,11 +53,24 @@ home_assistant:
 sensor:
   name: "sensor.batteries_stan_pojemnosci"  # ID twojego czujnika
 
+solar_sensors:  # Czujniki prognozy produkcji solarnej
+  - "sensor.energy_production_today"
+  - "sensor.energy_production_today_2"
+  - "sensor.energy_production_today_3"
+  - "sensor.energy_production_today_4"
+
 time:
   history_minutes: 90  # Okres danych historycznych
 
 forecast:
   threshold_percent: 5  # Próg alertu
+
+charging:
+  enabled: true  # Włącz optymalizację ładowania
+  hours_needed: 4  # Ile godzin potrzeba na pełne naładowanie
+
+openai:  # Opcjonalne - dla rekomendacji AI
+  api_key: ""  # Klucz API OpenAI (zostaw puste aby wyłączyć)
 ```
 
 ## Konfiguracja
@@ -80,10 +102,40 @@ Parametr `history_minutes` określa, ile danych historycznych jest używanych do
 - **10%**: Wczesne ostrzeżenie
 - **20%**: Ostrzeżenie konserwatywne
 
+### Czujniki solarne
+
+Lista czujników prognozy produkcji solarnej z Home Assistant. Aplikacja wykorzysta je do optymalizacji ładowania:
+```yaml
+solar_sensors:
+  - "sensor.energy_production_today"
+  - "sensor.energy_production_today_2"
+  - "sensor.energy_production_today_3"
+  - "sensor.energy_production_today_4"
+```
+
+### Optymalizacja ładowania
+
+Konfiguracja modułu optymalizacji ładowania:
+- **enabled**: `true/false` - włącz/wyłącz optymalizację
+- **hours_needed**: Ile godzin potrzeba na pełne naładowanie baterii
+
+### OpenAI (opcjonalne)
+
+Aby korzystać z rekomendacji AI opartych na ChatGPT:
+1. Uzyskaj klucz API z [platform.openai.com](https://platform.openai.com)
+2. Dodaj klucz do `config.yaml`:
+```yaml
+openai:
+  api_key: "sk-..."
+```
+
+**Uwaga**: Rekomendacje AI są opcjonalne. Bez klucza API, aplikacja użyje inteligentnego systemu reguł.
+
 ## Użycie
 
-Uruchom skrypt prognozy:
+### Podstawowe użycie
 
+Uruchom prognozę i optymalizację ładowania:
 ```bash
 python main.py
 ```
@@ -93,6 +145,11 @@ Z szczegółowym wyjściem:
 python main.py --verbose
 ```
 
+Tylko prognoza SOC (bez optymalizacji ładowania):
+```bash
+python main.py --forecast-only
+```
+
 Z własnym plikiem konfiguracyjnym:
 ```bash
 python main.py --config /path/to/config.yaml
@@ -100,6 +157,7 @@ python main.py --config /path/to/config.yaml
 
 ### Wynik
 
+#### Prognoza SOC
 Skrypt wyświetli:
 - Aktualny procent SOC
 - Analiza trendu (tempo zmian, korelacja)
@@ -107,7 +165,16 @@ Skrypt wyświetli:
 - ETA do progu (jeśli się rozładowuje)
 - Pozostały czas do progu
 
-Przykładowe wyjście:
+#### Rekomendacje ładowania
+Dodatkowo, jeśli optymalizacja jest włączona:
+- Czy zalecane jest ładowanie z sieci
+- Optymalne godziny do ładowania
+- Uzasadnienie rekomendacji
+- Prognoza produkcji solarnej
+- Analiza cen energii elektrycznej
+- Priorytet (niski/średni/wysoki)
+
+#### Przykładowe wyjście:
 ```
 ============================================================
 Battery SOC Forecast
@@ -123,6 +190,30 @@ Trend Analysis:
 Forecast:
   ETA to 5%: 2025-12-14 13:45:30
   Time remaining: 16 hours 15 minutes
+============================================================
+
+============================================================
+Battery Charging Recommendation
+============================================================
+✓ Charging RECOMMENDED (Priority: MEDIUM)
+  Recommended window: 02:00 - 05:00
+  Hours: 02:00, 03:00, 04:00, 05:00
+
+Reasoning:
+  Battery forecast shows decline reaching threshold in 16.3 hours | 
+  Low solar forecast: 3.5 kWh expected | 
+  Cheapest charging window: 02:00-05:00 at avg 0.4823 PLN/kWh
+
+Solar Production Forecast:
+  Total expected: 3.50 kWh
+  main: 1.20 kWh
+  2: 0.80 kWh
+  3: 0.90 kWh
+  4: 0.60 kWh
+
+Electricity Price Analysis:
+  Cheapest 4h window: 02:00 - 05:00
+  Average price: 0.4823 PLN/kWh
 ============================================================
 ```
 
