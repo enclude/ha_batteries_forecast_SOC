@@ -171,6 +171,41 @@ def test_fast_declining_battery():
     print("✓ Test passed!")
 
 
+def test_insufficient_data_points():
+    """Test forecast with insufficient data points."""
+    print("\n" + "="*60)
+    print("Test 6: Insufficient Data Points (only 2 points)")
+    print("="*60)
+    
+    # Create mock data: Only 2 data points
+    start_time = datetime.now() - timedelta(minutes=10)
+    history_data = []
+    
+    # Generate only 2 data points
+    for i in range(2):
+        time = start_time + timedelta(minutes=i*5)
+        value = 50.0 - (5.0 * i)
+        history_data.append((time, value))
+    
+    # Create forecaster
+    forecaster = BatteryForecast(threshold_percent=5)
+    
+    # This should raise ValueError due to insufficient data
+    try:
+        forecast_result = forecaster.forecast_threshold_time(history_data)
+        print("❌ Test failed: Should have raised ValueError for insufficient data")
+        return False
+    except ValueError as e:
+        expected_msg = "Not enough data points for trend analysis"
+        if expected_msg in str(e):
+            print(f"✓ Correctly raised ValueError: {e}")
+            print("✓ Test passed!")
+            return True
+        else:
+            print(f"❌ Test failed: Wrong error message: {e}")
+            return False
+
+
 if __name__ == '__main__':
     print("\n" + "="*60)
     print("Battery Forecast Test Suite")
@@ -182,6 +217,7 @@ if __name__ == '__main__':
         test_charging_battery()
         test_critical_battery()
         test_fast_declining_battery()
+        test_insufficient_data_points()
         
         print("\n" + "="*60)
         print("✅ All tests passed successfully!")

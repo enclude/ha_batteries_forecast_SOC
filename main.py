@@ -84,6 +84,18 @@ def main():
         if args.verbose:
             print(f"Retrieved {len(history_data)} data points")
         
+        # Check if we have enough data points for reliable analysis
+        if len(history_data) < 3:
+            print(f"Warning: Only {len(history_data)} data points available (minimum 3 required for reliable trend analysis)")
+            print("\nPossible solutions:")
+            print(f"  1. Increase 'history_minutes' in config.yaml (current: {config.history_minutes})")
+            print("  2. Wait for more data to be recorded by Home Assistant")
+            print("  3. Check sensor recording frequency in Home Assistant configuration")
+            print("  4. Verify the sensor is updating regularly (check in Developer Tools → States)")
+            print("\nNote: Home Assistant only records state changes, not periodic updates.")
+            print("If your battery SOC changes slowly, there may be few recorded states.")
+            sys.exit(1)
+        
         # Initialize forecaster
         forecaster = BatteryForecast(config.threshold_percent)
         
