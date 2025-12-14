@@ -1,13 +1,11 @@
 """Battery charging optimizer using forecast data, prices, and AI recommendations."""
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
 # Configuration constants
 CRITICAL_SOC_MULTIPLIER = 2  # Multiplier for critical battery threshold
-LOW_SOLAR_THRESHOLD_KWH = 5.0  # Threshold for low solar production forecast
-LOW_SOLAR_SOC_MULTIPLIER = 4  # Consider charging if below 4x threshold when solar is low
 HOURS_TO_THRESHOLD_URGENT = 12  # Hours to threshold for high priority
 HOURS_TO_THRESHOLD_MEDIUM = 24  # Hours to threshold for medium priority
 
@@ -15,50 +13,230 @@ HOURS_TO_THRESHOLD_MEDIUM = 24  # Hours to threshold for medium priority
 class ChargingOptimizer:
     """Optimize battery charging based on multiple data sources."""
     
-    def __init__(self, ha_client, pstryk_client, openai_advisor=None):
+    def __init__(self, ha_client, pstryk_client, openai_advisor=None, power_sensors=None, soc_sensor_name=None):
         """Initialize charging optimizer.
         
         Args:
             ha_client: HomeAssistantClient instance
             pstryk_client: PstrykApiClient instance
             openai_advisor: OpenAIChargingAdvisor instance (optional)
+            power_sensors: List of power consumption sensor IDs (optional)
+            soc_sensor_name: Battery SOC sensor entity ID (optional)
         """
         self.ha_client = ha_client
         self.pstryk_client = pstryk_client
         self.openai_advisor = openai_advisor
+        self._price_cache = None  # Cache for electricity prices
+        self._power_sensors = power_sensors or []
+        self._soc_sensor_name = soc_sensor_name
     
-    def get_solar_forecast(self, sensor_names):
-        """Fetch solar production forecast from Home Assistant sensors.
+    def get_soc_history(self, sensor_name, history_hours=72):
+        """Fetch SOC history for better predictions.
         
         Args:
-            sensor_names: List of sensor entity IDs for solar production forecast
+            sensor_name: Battery SOC sensor entity ID
+            history_hours: Hours of historical SOC data to fetch
         
         Returns:
-            dict: Solar production forecast with sensor names as keys
+            list: List of tuples (timestamp, soc_value) representing SOC history
         """
-        solar_data = {}
-        
-        for sensor_name in sensor_names:
-            try:
-                value = self.ha_client.get_current_state(sensor_name)
-                solar_data[sensor_name] = value
-                logger.info(f"Solar forecast from {sensor_name}: {value} kWh")
-            except Exception as e:
-                logger.warning(f"Failed to fetch solar forecast from {sensor_name}: {e}")
-                solar_data[sensor_name] = 0.0
-        
-        return solar_data
+        try:
+            history_minutes = history_hours * 60
+            logger.info(f"Fetching {history_hours}h SOC history for predictions...")
+            
+            history_data = self.ha_client.get_sensor_history(
+                sensor_name,
+                history_minutes,
+                include_current_state=True
+            )
+            
+            if history_data:
+                logger.info(f"Retrieved {len(history_data)} SOC data points over {history_hours}h")
+                # Calculate some statistics for logging
+                soc_values = [soc for _, soc in history_data]
+                avg_soc = sum(soc_values) / len(soc_values)
+                min_soc = min(soc_values)
+                max_soc = max(soc_values)
+                logger.info(f"SOC history stats: avg={avg_soc:.1f}%, min={min_soc:.1f}%, max={max_soc:.1f}%")
+                return history_data
+            else:
+                logger.warning("No SOC history data available")
+                return []
+        except Exception as e:
+            logger.error(f"Failed to fetch SOC history: {e}")
+            return []
     
-    def calculate_total_solar_forecast(self, solar_data):
-        """Calculate total expected solar production.
+    def get_power_consumption_forecast(self, sensor_names, history_hours=72):
+        """Fetch and analyze power consumption to forecast future usage.
         
         Args:
-            solar_data: Dictionary of solar sensor readings
+            sensor_names: List of power sensor entity IDs.
+                          Can be instantaneous power sensors (Watts) or cumulative energy sensors (kWh).
+                          For cumulative sensors (total_forward_active_energy), calculates power from deltas.
+            history_hours: Hours of historical data to analyze (default: 72)
         
         Returns:
-            float: Total expected solar production in kWh
+            dict: Power consumption forecast with statistics:
+                {
+                    'average_power_w': float,  # Average power consumption in Watts
+                    'peak_power_w': float,     # Peak power consumption in Watts
+                    'hourly_average_kwh': float,  # Average kWh per hour
+                    'daily_forecast_kwh': float,  # Forecasted daily consumption
+                    'next_hour_forecast_kwh': float  # Forecasted consumption for next hour
+                }
         """
-        return sum(solar_data.values())
+        try:
+            history_minutes = history_hours * 60
+            power_history = []  # Will store (timestamp, power_in_watts) tuples
+            
+            logger.info(f"Fetching {history_hours}h power consumption history from {len(sensor_names)} sensors...")
+            
+            # Fetch history for all power sensors
+            for sensor_name in sensor_names:
+                try:
+                    history = self.ha_client.get_sensor_history(
+                        sensor_name,
+                        history_minutes,
+                        include_current_state=True
+                    )
+                    
+                    if not history:
+                        logger.warning(f"No history data for {sensor_name}")
+                        continue
+                    
+                    logger.info(f"Power sensor {sensor_name}: {len(history)} readings")
+                    
+                    # Check if this is a cumulative energy sensor (kWh) or instantaneous power sensor (W)
+                    # Cumulative sensors have "energy" or "total" in their name
+                    is_cumulative = 'energy' in sensor_name.lower() or 'total' in sensor_name.lower()
+                    
+                    if is_cumulative:
+                        logger.info(f"Detected cumulative energy sensor: {sensor_name}, resampling to 15-minute intervals")
+                        
+                        # Resample to 15-minute intervals for consistent data points
+                        # This gives us 4 readings per hour, 96 per day, ~288 for 72 hours
+                        interval_minutes = 15
+                        
+                        if len(history) < 2:
+                            logger.warning(f"Not enough data points for resampling: {len(history)}")
+                            continue
+                        
+                        # Sort history by timestamp
+                        history.sort(key=lambda x: x[0])
+                        
+                        # Get start and end times
+                        start_time = history[0][0]
+                        end_time = history[-1][0]
+                        
+                        # Create 15-minute interval timestamps
+                        current_time = start_time
+                        interval_delta = timedelta(minutes=interval_minutes)
+                        
+                        while current_time <= end_time:
+                            # Find the next timestamp after current_time
+                            next_time = current_time + interval_delta
+                            
+                            # Find readings around this interval
+                            prev_reading = None
+                            next_reading = None
+                            
+                            for ts, kwh in history:
+                                if ts <= current_time:
+                                    prev_reading = (ts, kwh)
+                                elif ts <= next_time:
+                                    next_reading = (ts, kwh)
+                                    break
+                            
+                            # If we have both readings, calculate power for this interval
+                            if prev_reading and next_reading:
+                                prev_ts, prev_kwh = prev_reading
+                                next_ts, next_kwh = next_reading
+                                
+                                # Calculate time difference in hours
+                                time_delta_hours = (next_ts - prev_ts).total_seconds() / 3600
+                                
+                                if time_delta_hours > 0 and next_kwh >= prev_kwh:
+                                    # Calculate energy consumed in this period (kWh)
+                                    energy_delta_kwh = next_kwh - prev_kwh
+                                    
+                                    # Calculate average power during this period (W)
+                                    power_w = (energy_delta_kwh / time_delta_hours) * 1000
+                                    
+                                    # Use the interval midpoint as timestamp
+                                    interval_midpoint = current_time + timedelta(minutes=interval_minutes/2)
+                                    power_history.append((interval_midpoint, power_w))
+                            
+                            current_time = next_time
+                        
+                        logger.info(f"Resampled to {len([p for p in power_history if p[0] >= start_time])} 15-minute intervals")
+                    else:
+                        logger.info(f"Detected instantaneous power sensor: {sensor_name}")
+                        # Direct power readings in Watts
+                        power_history.extend([(ts, value) for ts, value in history])
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to fetch power data from {sensor_name}: {e}")
+                    continue
+            
+            if not power_history:
+                logger.warning("No power consumption data available")
+                return {
+                    'average_power_w': 0,
+                    'peak_power_w': 0,
+                    'hourly_average_kwh': 0,
+                    'daily_forecast_kwh': 0,
+                    'next_hour_forecast_kwh': 0,
+                    'data_points': 0,
+                    'raw_history': []
+                }
+            
+            # Sort by timestamp
+            power_history.sort(key=lambda x: x[0])
+            
+            # Calculate statistics
+            power_values = [value for _, value in power_history]
+            average_power_w = sum(power_values) / len(power_values)
+            peak_power_w = max(power_values)
+            
+            # Convert to kWh
+            hourly_average_kwh = average_power_w / 1000
+            daily_forecast_kwh = hourly_average_kwh * 24
+            
+            # Forecast next hour: use average of last 3 hours or overall average
+            recent_cutoff = power_history[-1][0] - timedelta(hours=3)
+            recent_values = [value for ts, value in power_history if ts >= recent_cutoff]
+            
+            if recent_values:
+                next_hour_power_w = sum(recent_values) / len(recent_values)
+            else:
+                next_hour_power_w = average_power_w
+            
+            next_hour_forecast_kwh = next_hour_power_w / 1000
+            
+            logger.info(f"Power consumption analysis: avg={average_power_w:.0f}W, peak={peak_power_w:.0f}W")
+            logger.info(f"Daily forecast: {daily_forecast_kwh:.2f} kWh, Next hour: {next_hour_forecast_kwh:.2f} kWh")
+            
+            return {
+                'average_power_w': average_power_w,
+                'peak_power_w': peak_power_w,
+                'hourly_average_kwh': hourly_average_kwh,
+                'daily_forecast_kwh': daily_forecast_kwh,
+                'next_hour_forecast_kwh': next_hour_forecast_kwh,
+                'data_points': len(power_history),
+                'raw_history': power_history
+            }
+            
+        except Exception as e:
+            logger.error(f"Error calculating power consumption forecast: {e}")
+            return {
+                'average_power_w': 0,
+                'peak_power_w': 0,
+                'hourly_average_kwh': 0,
+                'daily_forecast_kwh': 0,
+                'next_hour_forecast_kwh': 0,
+                'data_points': 0,
+                'raw_history': []
+            }
     
     def calculate_charging_hours_needed(self, current_soc, target_soc, battery_capacity_kwh, max_charging_power_kw):
         """Calculate hours needed to charge battery from current to target SOC.
@@ -87,13 +265,12 @@ class ChargingOptimizer:
         # Round up to nearest hour
         return math.ceil(hours_needed)
     
-    def optimize_charging(self, forecast_data, solar_sensors, battery_capacity_kwh=10, 
+    def optimize_charging(self, forecast_data, battery_capacity_kwh=10, 
                          max_charging_power_kw=5, allow_multiple_periods=True):
         """Optimize battery charging schedule.
         
         Args:
             forecast_data: Battery SOC forecast data from BatteryForecast
-            solar_sensors: List of solar production forecast sensor IDs
             battery_capacity_kwh: Battery capacity in kWh
             max_charging_power_kw: Maximum charging power from grid in kW
             allow_multiple_periods: Allow multiple non-consecutive charging periods
@@ -107,7 +284,6 @@ class ChargingOptimizer:
                     'hours_needed': int,
                     'reasoning': str,
                     'price_analysis': dict,
-                    'solar_forecast': dict,
                     'ai_recommendation': dict or None,
                     'priority': str
                 }
@@ -122,30 +298,48 @@ class ChargingOptimizer:
             
             logger.info(f"Calculated charging hours needed: {hours_needed}h (SOC: {current_soc:.1f}% -> {target_soc}%)")
             
-            # Get electricity prices
-            logger.info("Fetching electricity prices...")
-            prices_today = self.pstryk_client.get_electricity_prices()
+            # Get electricity prices (with caching to avoid rate limiting)
+            if self._price_cache is None:
+                logger.info("Fetching electricity prices...")
+                self._price_cache = self.pstryk_client.get_electricity_prices()
+            else:
+                logger.info("Using cached electricity prices")
+            prices_today = self._price_cache
             
-            # Get cheapest charging windows/periods
+            # Get cheapest charging windows/periods (using cached data)
             if allow_multiple_periods and hours_needed > 0:
-                cheapest_periods = self.pstryk_client.get_cheapest_hours_multiple_periods(hours_needed)
+                cheapest_periods = self.pstryk_client.get_cheapest_hours_multiple_periods(hours_needed, use_cached_prices=prices_today)
                 # Also get single window for comparison
                 try:
-                    cheapest_window = self.pstryk_client.get_cheapest_hours(hours_needed)
+                    cheapest_window = self.pstryk_client.get_cheapest_hours(hours_needed, use_cached_prices=prices_today)
                 except:
                     cheapest_window = None
             else:
                 if hours_needed > 0:
-                    cheapest_window = self.pstryk_client.get_cheapest_hours(hours_needed)
+                    cheapest_window = self.pstryk_client.get_cheapest_hours(hours_needed, use_cached_prices=prices_today)
                     cheapest_periods = [cheapest_window]
                 else:
                     cheapest_window = None
                     cheapest_periods = []
             
-            # Get solar forecast
-            logger.info("Fetching solar production forecast...")
-            solar_data = self.get_solar_forecast(solar_sensors)
-            total_solar = self.calculate_total_solar_forecast(solar_data)
+
+            
+            # Get power consumption forecast (if sensors configured)
+            power_forecast = {'daily_forecast_kwh': 0, 'next_hour_forecast_kwh': 0}
+            if hasattr(self, '_power_sensors') and self._power_sensors:
+                power_forecast = self.get_power_consumption_forecast(
+                    self._power_sensors,
+                    history_hours=72
+                )
+            else:
+                logger.debug("No power consumption sensors configured, skipping power forecast")
+            
+            # Get SOC history for better predictions (if sensor name available)
+            soc_history = []
+            if hasattr(self, '_soc_sensor_name') and self._soc_sensor_name:
+                soc_history = self.get_soc_history(self._soc_sensor_name, history_hours=72)
+            else:
+                logger.debug("No SOC sensor configured, skipping SOC history")
             
             # Prepare result structure
             result = {
@@ -161,10 +355,6 @@ class ChargingOptimizer:
                     'cheapest_periods': cheapest_periods,
                     'prices': prices_today
                 },
-                'solar_forecast': {
-                    'sensors': solar_data,
-                    'total_expected': total_solar
-                },
                 'ai_recommendation': None,
                 'priority': 'low',
                 'battery_info': {
@@ -178,8 +368,7 @@ class ChargingOptimizer:
             # Rule-based analysis
             rule_based_decision = self._rule_based_recommendation(
                 forecast_data, 
-                cheapest_periods,
-                total_solar
+                cheapest_periods
             )
             
             # Get AI recommendation if available
@@ -189,14 +378,25 @@ class ChargingOptimizer:
                     ai_recommendation = self.openai_advisor.analyze_charging_strategy(
                         forecast_data,
                         prices_today,
-                        solar_data
+                        power_forecast=power_forecast,
+                        soc_history=soc_history
                     )
                     result['ai_recommendation'] = ai_recommendation
                     
-                    # Use AI recommendation
-                    result['should_charge'] = ai_recommendation['should_charge']
-                    result['recommended_hours'] = ai_recommendation['recommended_hours']
+                    # Use AI recommendation, but filter to only future hours
+                    from datetime import datetime
+                    current_hour = datetime.now().hour
+                    
+                    # Filter recommended hours to only include current and future hours
+                    recommended_hours = ai_recommendation['recommended_hours']
+                    future_hours = [h for h in recommended_hours if h >= current_hour]
+                    
+                    result['should_charge'] = ai_recommendation['should_charge'] and len(future_hours) > 0
+                    result['recommended_hours'] = future_hours
                     result['reasoning'] = ai_recommendation['reasoning']
+                    if future_hours != recommended_hours:
+                        removed_count = len(recommended_hours) - len(future_hours)
+                        result['reasoning'] += f" | Note: {removed_count} past hour(s) excluded from recommendation"
                     result['priority'] = ai_recommendation['priority']
                     
                     if result['recommended_hours']:
@@ -222,18 +422,16 @@ class ChargingOptimizer:
                 'end_hour': None,
                 'reasoning': f"Error: {str(e)}",
                 'price_analysis': {},
-                'solar_forecast': {},
                 'ai_recommendation': None,
                 'priority': 'low'
             }
     
-    def _rule_based_recommendation(self, forecast_data, cheapest_periods, total_solar, current_time=None):
+    def _rule_based_recommendation(self, forecast_data, cheapest_periods, current_time=None):
         """Generate rule-based charging recommendation.
         
         Args:
             forecast_data: Battery SOC forecast data
             cheapest_periods: List of cheapest price periods from pstryk.pl
-            total_solar: Total expected solar production
             current_time: Current datetime (for testing), defaults to datetime.now()
         
         Returns:
@@ -260,7 +458,10 @@ class ChargingOptimizer:
         # Check if battery is declining and will reach threshold soon
         elif is_declining and forecast_data.get('eta'):
             eta = forecast_data['eta']
-            hours_to_threshold = (eta - current_time).total_seconds() / 3600
+            # Ensure both datetimes are comparable (remove timezone info if present)
+            eta_naive = eta.replace(tzinfo=None) if hasattr(eta, 'tzinfo') and eta.tzinfo else eta
+            current_time_naive = current_time.replace(tzinfo=None) if hasattr(current_time, 'tzinfo') and current_time.tzinfo else current_time
+            hours_to_threshold = (eta_naive - current_time_naive).total_seconds() / 3600
             
             if hours_to_threshold < HOURS_TO_THRESHOLD_URGENT:
                 should_charge = True
@@ -270,15 +471,6 @@ class ChargingOptimizer:
                 should_charge = True
                 priority = 'medium'
                 reasoning_parts.append(f"Battery forecast shows decline reaching threshold in {hours_to_threshold:.1f} hours")
-        
-        # Check solar forecast - if low, consider charging
-        if total_solar < LOW_SOLAR_THRESHOLD_KWH:
-            reasoning_parts.append(f"Low solar forecast: {total_solar:.1f} kWh expected")
-            if not should_charge and current_soc < threshold * LOW_SOLAR_SOC_MULTIPLIER:
-                should_charge = True
-                priority = 'medium'
-        else:
-            reasoning_parts.append(f"Good solar forecast: {total_solar:.1f} kWh expected")
         
         # Add price information
         if cheapest_periods:
@@ -370,15 +562,6 @@ class ChargingOptimizer:
         
         lines.append(f"\nReasoning:")
         lines.append(f"  {recommendation['reasoning']}")
-        
-        # Solar forecast
-        if recommendation['solar_forecast']:
-            lines.append(f"\nSolar Production Forecast:")
-            total = recommendation['solar_forecast'].get('total_expected', 0)
-            lines.append(f"  Total expected: {total:.2f} kWh")
-            for sensor, value in recommendation['solar_forecast'].get('sensors', {}).items():
-                sensor_short = sensor.replace('sensor.energy_production_today_', '').replace('sensor.energy_production_today', 'main')
-                lines.append(f"  {sensor_short}: {value:.2f} kWh")
         
         # Price analysis
         if recommendation['price_analysis'].get('cheapest_periods'):

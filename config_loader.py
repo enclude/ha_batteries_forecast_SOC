@@ -59,9 +59,14 @@ class Config:
         return self.config['forecast']['threshold_percent']
     
     @property
-    def solar_sensors(self):
-        """Get list of solar production forecast sensor IDs."""
-        return self.config.get('solar_sensors', [])
+    def power_consumption_sensors(self):
+        """Get list of power consumption sensor IDs (3-phase power meters)."""
+        return self.config.get('power_consumption_sensors', [])
+    
+    @property
+    def power_forecast_hours(self):
+        """Get number of hours of historical power data for forecasting."""
+        return self.config.get('power_forecast', {}).get('history_hours', 72)
     
     @property
     def charging_enabled(self):

@@ -86,38 +86,6 @@ def test_optimizer_initialization():
     print("✓ Optimizer initialized successfully")
 
 
-def test_solar_forecast_fetching():
-    """Test solar forecast data fetching."""
-    print("\n" + "="*60)
-    print("Test 2: Solar Forecast Fetching")
-    print("="*60)
-    
-    # Create mock HA client
-    ha_client = Mock()
-    ha_client.get_current_state = Mock(side_effect=[10.5, 8.3, 9.1, 7.2])
-    
-    pstryk_client = Mock()
-    optimizer = ChargingOptimizer(ha_client, pstryk_client, None)
-    
-    solar_sensors = [
-        'sensor.energy_production_today',
-        'sensor.energy_production_today_2',
-        'sensor.energy_production_today_3',
-        'sensor.energy_production_today_4'
-    ]
-    
-    solar_data = optimizer.get_solar_forecast(solar_sensors)
-    
-    assert len(solar_data) == 4
-    assert solar_data['sensor.energy_production_today'] == 10.5
-    
-    total = optimizer.calculate_total_solar_forecast(solar_data)
-    assert total == 35.1
-    
-    print(f"  Total solar forecast: {total} kWh")
-    print("✓ Solar forecast fetching works correctly")
-
-
 def test_rule_based_recommendation_critical_battery():
     """Test rule-based recommendation with critical battery."""
     print("\n" + "="*60)
@@ -133,12 +101,10 @@ def test_rule_based_recommendation_critical_battery():
     forecast_data = create_mock_forecast_data(soc=8.0, declining=True)
     cheapest_window = create_mock_cheapest_window()
     cheapest_periods = [cheapest_window]
-    total_solar = 5.0
     
     recommendation = optimizer._rule_based_recommendation(
         forecast_data,
-        cheapest_periods,
-        total_solar
+        cheapest_periods
     )
     
     print(f"  Should charge: {recommendation['should_charge']}")
@@ -167,12 +133,10 @@ def test_rule_based_recommendation_healthy_battery():
     forecast_data = create_mock_forecast_data(soc=80.0, declining=False)
     cheapest_window = create_mock_cheapest_window()
     cheapest_periods = [cheapest_window]
-    total_solar = 25.0  # Good solar forecast
     
     recommendation = optimizer._rule_based_recommendation(
         forecast_data,
-        cheapest_periods,
-        total_solar
+        cheapest_periods
     )
     
     print(f"  Should charge: {recommendation['should_charge']}")
@@ -244,13 +208,6 @@ def test_format_recommendation():
             'cheapest_periods': [create_mock_cheapest_window()],
             'prices': create_mock_price_data()
         },
-        'solar_forecast': {
-            'sensors': {
-                'sensor.energy_production_today': 10.5,
-                'sensor.energy_production_today_2': 8.3
-            },
-            'total_expected': 18.8
-        },
         'ai_recommendation': None,
         'battery_info': {
             'capacity_kwh': 10,
@@ -269,47 +226,6 @@ def test_format_recommendation():
     assert "HIGH" in formatted
     
     print("\n✓ Recommendation formatting works correctly")
-
-
-def test_optimization_with_low_solar():
-    """Test optimization decision with low solar forecast."""
-    print("\n" + "="*60)
-    print("Test 7: Optimization with Low Solar Forecast")
-    print("="*60)
-    
-    # Create mocks
-    ha_client = Mock()
-    ha_client.get_current_state = Mock(side_effect=[1.0, 0.5, 0.8, 0.3])
-    
-    pstryk_client = Mock()
-    pstryk_client.get_electricity_prices = Mock(return_value=create_mock_price_data())
-    cheapest_window = create_mock_cheapest_window()
-    pstryk_client.get_cheapest_hours = Mock(return_value=cheapest_window)
-    pstryk_client.get_cheapest_hours_multiple_periods = Mock(return_value=[cheapest_window])
-    
-    optimizer = ChargingOptimizer(ha_client, pstryk_client, None)
-    
-    # Medium battery but low solar
-    forecast_data = create_mock_forecast_data(soc=25.0, declining=True)
-    solar_sensors = [
-        'sensor.energy_production_today',
-        'sensor.energy_production_today_2',
-        'sensor.energy_production_today_3',
-        'sensor.energy_production_today_4'
-    ]
-    
-    # Use new parameters: battery_capacity_kwh, max_charging_power_kw, allow_multiple_periods
-    recommendation = optimizer.optimize_charging(forecast_data, solar_sensors, 10, 5, True)
-    
-    print(f"  Should charge: {recommendation['should_charge']}")
-    print(f"  Solar forecast: {recommendation['solar_forecast']['total_expected']} kWh")
-    print(f"  Reasoning: {recommendation['reasoning']}")
-    
-    # With low solar (2.6 kWh) and declining battery at 25%, should recommend charging
-    assert recommendation['should_charge'] == True
-    assert recommendation['solar_forecast']['total_expected'] < 5.0
-    
-    print("✓ Low solar forecast correctly influences charging decision")
 
 
 def test_multiple_charging_periods():
@@ -375,12 +291,10 @@ if __name__ == '__main__':
     
     try:
         test_optimizer_initialization()
-        test_solar_forecast_fetching()
         test_rule_based_recommendation_critical_battery()
         test_rule_based_recommendation_healthy_battery()
         test_cheapest_hours_calculation()
         test_format_recommendation()
-        test_optimization_with_low_solar()
         test_multiple_charging_periods()
         test_charging_hours_calculation()
         

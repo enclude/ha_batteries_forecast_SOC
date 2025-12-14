@@ -11,23 +11,26 @@ DEFAULT_MODEL = "gpt-4o-mini"
 class OpenAIChargingAdvisor:
     """OpenAI-powered charging advisor for battery optimization."""
     
-    def __init__(self, api_key, model=None):
+    def __init__(self, api_key, model=None, verbose=False):
         """Initialize OpenAI API client.
         
         Args:
             api_key: OpenAI API key
             model: OpenAI model to use (default: gpt-4o-mini)
+            verbose: Enable verbose logging of raw data sent to API
         """
         self.client = OpenAI(api_key=api_key)
         self.model = model or DEFAULT_MODEL
+        self.verbose = verbose
     
-    def analyze_charging_strategy(self, forecast_data, price_data, solar_forecast):
+    def analyze_charging_strategy(self, forecast_data, price_data, power_forecast=None, soc_history=None):
         """Analyze data and recommend optimal charging strategy.
         
         Args:
             forecast_data: Battery SOC forecast data (dict from BatteryForecast)
             price_data: Electricity price data from pstryk.pl (list of dicts)
-            solar_forecast: Solar production forecast data (dict with production values)
+            power_forecast: Power consumption forecast (optional)
+            soc_history: Historical SOC data for pattern analysis (optional)
         
         Returns:
             dict: Charging recommendations with structure:
@@ -41,20 +44,27 @@ class OpenAIChargingAdvisor:
         """
         try:
             # Build context for GPT
-            context = self._build_context(forecast_data, price_data, solar_forecast)
+            context = self._build_context(forecast_data, price_data, power_forecast, soc_history)
             
             # Create system prompt
             system_prompt = """You are an expert energy management advisor for home battery systems.
-Your task is to analyze battery state of charge forecasts, electricity prices, and solar production
-forecasts to recommend optimal charging times from the grid.
+Your task is to analyze battery state of charge forecasts, electricity prices,
+and power consumption patterns to recommend optimal charging times from the grid.
 
 Consider:
 1. Battery discharge rate and forecast SOC levels
 2. Hourly electricity prices
-3. Expected solar production
-4. Balance between cost savings and ensuring adequate battery charge
+3. Historical power consumption patterns to predict future usage
+4. Battery SOC history to understand usage patterns
+5. Balance between cost savings and ensuring adequate battery charge
 
-Provide practical, cost-effective recommendations."""
+Use the power consumption data to:
+- Predict when the battery will be most needed
+- Estimate how much energy will be consumed
+- Recommend charging before high-consumption periods
+- Avoid charging during peak usage times
+
+Provide practical, cost-effective recommendations based on all available data."""
 
             # Create user prompt
             user_prompt = f"""Analyze the following data and recommend charging strategy:
@@ -68,14 +78,17 @@ Battery Status:
 
 Electricity Prices (PLN/kWh):
 {self._format_prices(price_data)}
-
-Solar Production Forecast (kWh):
-{self._format_solar_forecast(solar_forecast)}
+{self._format_power_forecast(power_forecast) if power_forecast else ""}
+{self._format_soc_history(soc_history) if soc_history else ""}
 
 Based on this data:
 1. Should the battery be charged from the grid?
 2. What are the optimal hours to charge (provide specific hours 0-23)?
-3. Explain your reasoning considering cost, SOC forecast, and solar production.
+3. Explain your reasoning considering:
+   - Cost optimization (electricity prices)
+   - SOC forecast and battery decline rate
+   - Power consumption patterns (daily average, peak times, next hour forecast)
+   - SOC history patterns to predict future behavior
 4. What's the priority level (high/medium/low)?
 
 Respond in JSON format:
@@ -85,6 +98,18 @@ Respond in JSON format:
     "reasoning": "explanation",
     "priority": "high/medium/low"
 }}"""
+
+            # Log raw data if verbose mode is enabled
+            if self.verbose:
+                logger.info("="*80)
+                logger.info("RAW DATA SENT TO OPENAI API:")
+                logger.info("="*80)
+                logger.info("\nSYSTEM PROMPT:")
+                logger.info(system_prompt)
+                logger.info("\n" + "-"*80)
+                logger.info("USER PROMPT:")
+                logger.info(user_prompt)
+                logger.info("="*80)
 
             # Call OpenAI API
             response = self.client.chat.completions.create(
@@ -135,13 +160,29 @@ Respond in JSON format:
                 'priority': 'low'
             }
     
-    def _build_context(self, forecast_data, price_data, solar_forecast):
+    def _build_context(self, forecast_data, price_data, power_forecast=None, soc_history=None):
         """Build context string from input data."""
-        return {
+        context = {
             'forecast': forecast_data,
-            'prices': price_data,
-            'solar': solar_forecast
+            'prices': price_data
         }
+        
+        if power_forecast:
+            context['power_consumption'] = power_forecast
+        
+        if soc_history:
+            # Include summary of SOC history for pattern analysis
+            soc_values = [soc for _, soc in soc_history[-24:]]  # Last 24 data points
+            if soc_values:
+                context['soc_history'] = {
+                    'recent_average': sum(soc_values) / len(soc_values),
+                    'recent_min': min(soc_values),
+                    'recent_max': max(soc_values),
+                    'data_points': len(soc_history),
+                    'hours_covered': len(soc_history) / 12  # Assuming ~5min intervals
+                }
+        
+        return context
     
     def _format_prices(self, price_data):
         """Format price data for prompt."""
@@ -153,16 +194,84 @@ Respond in JSON format:
             lines.append(f"  {price['hour']:02d}:00 - {price['price']:.4f} PLN/kWh")
         return "\n".join(lines)
     
-    def _format_solar_forecast(self, solar_forecast):
-        """Format solar forecast data for prompt."""
-        if not solar_forecast:
-            return "No solar forecast available"
+    def _format_power_forecast(self, power_forecast):
+        """Format power consumption forecast for prompt."""
+        if not power_forecast or power_forecast.get('daily_forecast_kwh', 0) == 0:
+            return ""
         
-        lines = []
-        for key, value in solar_forecast.items():
-            lines.append(f"  {key}: {value:.2f} kWh")
-        return "\n".join(lines)
+        result = f"""
+Power Consumption Forecast:
+  Average power: {power_forecast.get('average_power_w', 0):.0f}W
+  Hourly average: {power_forecast.get('hourly_average_kwh', 0):.2f} kWh/h
+  Daily forecast: {power_forecast.get('daily_forecast_kwh', 0):.2f} kWh
+  Next hour forecast: {power_forecast.get('next_hour_forecast_kwh', 0):.2f} kWh
+"""
+        
+        # Include sampled historical data if available (to avoid token limits)
+        if power_forecast.get('raw_history'):
+            history = power_forecast['raw_history']
+            total_points = len(history)
+            
+            # Sample data intelligently to stay within token limits
+            # Target: ~100-150 data points max (one per ~30 minutes for 72h history)
+            max_samples = 150
+            
+            if total_points <= max_samples:
+                sampled_history = history
+            else:
+                # Sample evenly across the time period
+                step = total_points // max_samples
+                sampled_history = history[::step][:max_samples]
+            
+            result += f"\nPower Consumption History (sampled {len(sampled_history)} of {total_points} points):\n"
+            result += "Timestamp, Power (W)\n"
+            for timestamp, power_w in sampled_history:
+                result += f"{timestamp.strftime('%Y-%m-%d %H:%M')}, {power_w:.0f}\n"
+        
+        return result
     
+    def _format_soc_history(self, soc_history):
+        """Format SOC history for prompt."""
+        if not soc_history:
+            return ""
+        
+        # Get recent SOC values for pattern analysis
+        soc_values = [soc for _, soc in soc_history]  # All data points
+        if not soc_values:
+            return ""
+        
+        avg_soc = sum(soc_values) / len(soc_values)
+        min_soc = min(soc_values)
+        max_soc = max(soc_values)
+        
+        total_points = len(soc_history)
+        
+        # Sample data intelligently to stay within token limits
+        # Target: ~100-150 data points max (one per ~30 minutes for 72h history)
+        max_samples = 150
+        
+        if total_points <= max_samples:
+            sampled_history = soc_history
+        else:
+            # Sample evenly across the time period
+            step = total_points // max_samples
+            sampled_history = soc_history[::step][:max_samples]
+        
+        result = f"""
+Battery SOC History ({len(sampled_history)} of {total_points} readings over ~{total_points/12:.0f}h):
+  Average: {avg_soc:.1f}%
+  Minimum: {min_soc:.1f}%
+  Maximum: {max_soc:.1f}%
+
+Sampled SOC History:
+Timestamp, SOC %
+"""
+        
+        # Include sampled historical data points
+        for timestamp, soc in sampled_history:
+            result += f"{timestamp.strftime('%Y-%m-%d %H:%M')}, {soc:.1f}\n"
+        
+        return result    
     def _calculate_savings(self, recommended_hours, price_data):
         """Calculate estimated savings based on recommended hours.
         

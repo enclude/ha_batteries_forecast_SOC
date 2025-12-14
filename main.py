@@ -129,12 +129,24 @@ def main():
                 if config.openai_api_key and config.openai_api_key.strip():
                     if args.verbose:
                         print("Initializing OpenAI advisor...")
-                    openai_advisor = OpenAIChargingAdvisor(config.openai_api_key)
+                    openai_advisor = OpenAIChargingAdvisor(
+                        config.openai_api_key,
+                        verbose=args.verbose
+                    )
                 elif args.verbose:
                     print("OpenAI API key not configured, using rule-based optimization")
                 
-                # Initialize charging optimizer
-                optimizer = ChargingOptimizer(ha_client, pstryk_client, openai_advisor)
+                # Get power consumption sensors if configured
+                power_sensors = config.power_consumption_sensors if hasattr(config, 'power_consumption_sensors') else []
+                
+                # Initialize charging optimizer with SOC sensor for history tracking
+                optimizer = ChargingOptimizer(
+                    ha_client, 
+                    pstryk_client, 
+                    openai_advisor, 
+                    power_sensors,
+                    soc_sensor_name=config.sensor_name
+                )
                 
                 # Get charging recommendation
                 if args.verbose:
@@ -143,7 +155,6 @@ def main():
                 
                 recommendation = optimizer.optimize_charging(
                     forecast_result,
-                    config.solar_sensors,
                     config.battery_capacity_kwh,
                     config.max_charging_power_kw,
                     config.allow_multiple_periods

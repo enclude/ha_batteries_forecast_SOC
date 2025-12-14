@@ -6,13 +6,17 @@ home_assistant:
 # Sensor Configuration
 sensor:
   name: "sensor.batteries_stan_pojemnosci"  # Sensor entity ID to monitor
-  
-# Solar Production Forecast Sensors
-solar_sensors:
-  - "sensor.energy_production_today"
-  - "sensor.energy_production_today_2"
-  - "sensor.energy_production_today_3"
-  - "sensor.energy_production_today_4"
+
+# Power Consumption Sensors
+# Can use either:
+# - Instantaneous power sensors (Watts): power_active_phase_1, power_active_phase_2, etc.
+# - Cumulative energy sensor (kWh): total_forward_active_energy (recommended)
+power_consumption_sensors:
+  - "sensor.zamel_mew_01_rok_caly_dom_total_forward_active_energy"
+
+# Power Forecast Configuration
+power_forecast:
+  history_hours: 72  # Hours of historical data to analyze for forecasting
 
 # Time Configuration
 time:
@@ -35,8 +39,9 @@ openai:
   
 # pstryk.pl API Configuration
 # API documentation: https://api.pstryk.pl/integrations/swagger/
+# To get an API key, visit: https://api.pstryk.pl/
 pstryk:
-  api_key: ""  # API key (optional, leave empty if not required)
+  api_key: ""  # API key (REQUIRED for charging optimization)
   timeout: 30  # Request timeout in seconds
   base_url: "https://api.pstryk.pl"  # Base API URL
 
