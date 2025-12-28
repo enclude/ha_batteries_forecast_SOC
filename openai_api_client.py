@@ -84,8 +84,10 @@ Electricity Prices (PLN/kWh):
 Based on this data:
 1. Should the battery be charged from the grid?
 2. What are the optimal hours to charge (provide specific hours 0-23)?
+   - If tomorrow's prices are available, consider both days for optimal planning
+   - Prioritize cheapest hours across both days
 3. Explain your reasoning considering:
-   - Cost optimization (electricity prices)
+   - Cost optimization (electricity prices for today and tomorrow if available)
    - SOC forecast and battery decline rate
    - Power consumption patterns (daily average, peak times, next hour forecast)
    - SOC history patterns to predict future behavior
@@ -94,7 +96,7 @@ Based on this data:
 Respond in JSON format:
 {{
     "should_charge": true/false,
-    "recommended_hours": [list of hours],
+    "recommended_hours": [list of hours 0-23 for today, considering tomorrow's prices if available],
     "reasoning": "explanation",
     "priority": "high/medium/low"
 }}"""
@@ -185,13 +187,36 @@ Respond in JSON format:
         return context
     
     def _format_prices(self, price_data):
-        """Format price data for prompt."""
+        """Format price data for prompt, including today and tomorrow if available."""
         if not price_data:
             return "No price data available"
         
+        # Separate today and tomorrow prices
+        today_prices = []
+        tomorrow_prices = []
+        
+        for price in price_data:
+            if price.get('day_label') == 'tomorrow':
+                tomorrow_prices.append(price)
+            else:
+                today_prices.append(price)
+        
         lines = []
-        for price in price_data[:24]:  # Show up to 24 hours
-            lines.append(f"  {price['hour']:02d}:00 - {price['price']:.4f} PLN/kWh")
+        
+        # Format today's prices
+        if today_prices:
+            lines.append("Today's prices:")
+            for price in sorted(today_prices, key=lambda x: x['hour'])[:24]:
+                lines.append(f"  {price['hour']:02d}:00 - {price['price']:.4f} PLN/kWh")
+        
+        # Format tomorrow's prices if available
+        if tomorrow_prices:
+            lines.append("\nTomorrow's prices (available after 14:00):")
+            for price in sorted(tomorrow_prices, key=lambda x: x['hour'])[:24]:
+                # Show original hour (0-23) for tomorrow
+                original_hour = price['hour'] - 24 if price['hour'] >= 24 else price['hour']
+                lines.append(f"  {original_hour:02d}:00 - {price['price']:.4f} PLN/kWh")
+        
         return "\n".join(lines)
     
     def _format_power_forecast(self, power_forecast):

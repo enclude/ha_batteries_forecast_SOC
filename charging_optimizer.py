@@ -238,6 +238,29 @@ class ChargingOptimizer:
                 'raw_history': []
             }
     
+    def _split_prices_by_day(self, all_prices):
+        """Split combined prices into today and tomorrow.
+        
+        Args:
+            all_prices: List of price dicts with possible 'day_label' field
+            
+        Returns:
+            tuple: (prices_today, prices_tomorrow)
+        """
+        prices_today = []
+        prices_tomorrow = []
+        
+        for price in all_prices:
+            if price.get('day_label') == 'tomorrow':
+                # Restore original hour (0-23) for tomorrow
+                price_copy = price.copy()
+                price_copy['hour'] = price['hour'] - 24
+                prices_tomorrow.append(price_copy)
+            else:
+                prices_today.append(price)
+        
+        return prices_today, prices_tomorrow
+    
     def calculate_charging_hours_needed(self, current_soc, target_soc, battery_capacity_kwh, max_charging_power_kw):
         """Calculate hours needed to charge battery from current to target SOC.
         
@@ -299,9 +322,46 @@ class ChargingOptimizer:
             logger.info(f"Calculated charging hours needed: {hours_needed}h (SOC: {current_soc:.1f}% -> {target_soc}%)")
             
             # Get electricity prices (with caching to avoid rate limiting)
+            # Fetch both today and tomorrow (if available after 14:00 Warsaw time)
             if self._price_cache is None:
                 logger.info("Fetching electricity prices...")
-                self._price_cache = self.pstryk_client.get_electricity_prices()
+                
+                # Import for timezone handling
+                import pytz
+                warsaw_tz = pytz.timezone('Europe/Warsaw')
+                now_warsaw = datetime.now(warsaw_tz)
+                
+                # Always fetch today's prices
+                prices_today = self.pstryk_client.get_electricity_prices(date=now_warsaw.date())
+                logger.info(f"Fetched {len(prices_today)} prices for today: {now_warsaw.date()}")
+                
+                # If after 14:00, also fetch tomorrow's prices
+                all_prices = prices_today.copy()
+                if now_warsaw.hour >= 14:
+                    try:
+                        tomorrow_date = (now_warsaw + timedelta(days=1)).date()
+                        logger.info(f"After 14:00 Warsaw time, fetching tomorrow's prices: {tomorrow_date}")
+                        prices_tomorrow = self.pstryk_client.get_electricity_prices(date=tomorrow_date)
+                        logger.info(f"Fetched {len(prices_tomorrow)} prices for tomorrow: {tomorrow_date}")
+                        
+                        # Combine today and tomorrow prices
+                        # Adjust tomorrow's hours to be 24-47 for proper sorting
+                        for price in prices_tomorrow:
+                            price_copy = price.copy()
+                            price_copy['hour'] = price['hour'] + 24  # Shift to 24-47 range
+                            price_copy['day_label'] = 'tomorrow'
+                            all_prices.append(price_copy)
+                        
+                        # Mark today's prices
+                        for price in all_prices[:len(prices_today)]:
+                            price['day_label'] = 'today'
+                        
+                        logger.info(f"Combined prices: {len(all_prices)} hours total (today + tomorrow)")
+                    except Exception as e:
+                        logger.warning(f"Could not fetch tomorrow's prices: {e}")
+                        logger.info("Using only today's prices")
+                
+                self._price_cache = all_prices
             else:
                 logger.info("Using cached electricity prices")
             prices_today = self._price_cache
@@ -384,7 +444,6 @@ class ChargingOptimizer:
                     result['ai_recommendation'] = ai_recommendation
                     
                     # Use AI recommendation, but filter to only future hours
-                    from datetime import datetime
                     current_hour = datetime.now().hour
                     
                     # Filter recommended hours to only include current and future hours
